@@ -226,6 +226,8 @@ namespace Rise.Vehicles
             "#00d8ff", // Nismo Cyber Blue
         };
 
+        static readonly Material[] SharedNeonMats = new Material[6];
+
         public void ApplyOwnedCustomizations(OwnedVehicle o, WorldData data = null)
         {
             if (o == null) return;
@@ -260,6 +262,19 @@ namespace Rise.Vehicles
             {
                 if (Application.isPlaying) Destroy(existing.gameObject);
                 else DestroyImmediate(existing.gameObject);
+            }
+            if (Wheels != null)
+            {
+                for (int i = 0; i < Wheels.Length; i++)
+                {
+                    if (Wheels[i] == null) continue;
+                    var existingCap = Wheels[i].Find("CustomRimCap");
+                    if (existingCap != null)
+                    {
+                        if (Application.isPlaying) Destroy(existingCap.gameObject);
+                        else DestroyImmediate(existingCap.gameObject);
+                    }
+                }
             }
 
             if (Spoiler <= 0 && SkirtKit <= 0 && RoofScoop <= 0 && Rims <= 0 && NeonColor < 0 && NosStage <= 0)
@@ -351,8 +366,13 @@ namespace Rise.Vehicles
             {
                 string nHex = NeonHexPalette[NeonColor];
                 ColorUtility.TryParseHtmlString(nHex, out var nCol);
-                var neonMat = new Material(ShaderLib.Unlit) { color = nCol };
-                if (neonMat.HasProperty("_BaseColor")) neonMat.SetColor("_BaseColor", nCol);
+                var neonMat = SharedNeonMats[NeonColor];
+                if (neonMat == null)
+                {
+                    neonMat = new Material(ShaderLib.Unlit) { name = "NFS_Neon_" + NeonColor, color = nCol, enableInstancing = true };
+                    if (neonMat.HasProperty("_BaseColor")) neonMat.SetColor("_BaseColor", nCol);
+                    SharedNeonMats[NeonColor] = neonMat;
+                }
 
                 var neonRoot = new GameObject("NeonUnderglow").transform;
                 neonRoot.SetParent(root, false);

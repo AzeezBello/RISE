@@ -325,7 +325,7 @@ namespace Rise
                 {
                     if (mr.name == "Cube" || mr.name.StartsWith("Cube") || mr.name.Contains("body"))
                     {
-                        mr.material = VehicleBodies.Mat(rivalColors[rIdx], 0.85f);
+                        mr.sharedMaterial = VehicleBodies.Mat(rivalColors[rIdx], 0.85f);
                     }
                 }
 
@@ -335,7 +335,7 @@ namespace Rise
                 glow.transform.SetParent(rivalRoot, false);
                 glow.transform.localPosition = new Vector3(0f, 0.08f, 0f);
                 glow.transform.localScale = new Vector3(1.75f, 0.04f, 3.6f);
-                glow.GetComponent<MeshRenderer>().sharedMaterial = new Material(ShaderLib.Unlit) { color = new Color(col.r, col.g, col.b, 0.85f) };
+                glow.GetComponent<MeshRenderer>().sharedMaterial = VehicleBodies.Mat(rivalColors[rIdx], 0.92f, 0.5f);
                 Destroy(glow.GetComponent<Collider>());
 
                 // Floating NFS Racer Nameplate

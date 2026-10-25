@@ -105,11 +105,24 @@ namespace Rise
         // ---- enterable building interiors, indoor activities & indoor missions ----
         static readonly Vector3 RoomCenter = new Vector3(0f, 160f, 0f);
         GameObject interiorRoot;
+        readonly System.Collections.Generic.List<Material> interiorMaterials = new System.Collections.Generic.List<Material>();
         Vector3 interiorOutdoorPos;
         float interiorOutdoorYaw;
         string interiorName, interiorKind;
         System.Action interiorService;
         public bool InInterior => interiorRoot != null;
+
+        void DestroyInteriorRoot()
+        {
+            if (interiorRoot != null)
+            {
+                Destroy(interiorRoot);
+                interiorRoot = null;
+            }
+            for (int i = 0; i < interiorMaterials.Count; i++)
+                if (interiorMaterials[i] != null) Destroy(interiorMaterials[i]);
+            interiorMaterials.Clear();
+        }
 
         public class IndoorStation
         {
@@ -179,8 +192,7 @@ namespace Rise
             }
             else
             {
-                Destroy(interiorRoot);
-                interiorRoot = null;
+                DestroyInteriorRoot();
             }
             interiorName = name;
             interiorKind = kind;
@@ -194,6 +206,7 @@ namespace Rise
                 var m = new Material(lit) { color = c };
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
                 m.SetFloat("_Smoothness", 0.2f);
+                interiorMaterials.Add(m);
                 return m;
             }
             void RoomBox(string n, Vector3 localPos, Vector3 scale, Color c, bool col = true)
@@ -302,6 +315,22 @@ namespace Rise
             lightGo.transform.position = RoomCenter + new Vector3(0f, 3.6f, 0f);
             var l = lightGo.AddComponent<Light>(); l.type = LightType.Point; l.range = 28f; l.intensity = 2.1f; l.color = new Color(1f, 0.94f, 0.82f);
 
+            // Spawn 3D Furnished Interior Set & Props from Resources/Models/Interiors and Resources/Models/Props
+            string interiorModel = home
+                ? (name.Contains("Ikoyi") || name.Contains("Lekki") || name.Contains("Banana") ? "Interiors/city_loft" : "Interiors/living_room")
+                : club
+                    ? "Interiors/spacious_hall"
+                    : kind == "hotel"
+                        ? "Interiors/panoramic_penthouse"
+                        : "Interiors/mini_office";
+            Entities.CharacterRig.InstantiateGlb(interiorModel, "InteriorDecorSet", RoomCenter + new Vector3(0f, 0.02f, -1.8f), new Vector3(hw * 1.35f, 3.4f, hd * 1.15f), interiorRoot.transform, 0f, false);
+            Entities.CharacterRig.InstantiateGlb("Props/wood_furniture", "IndoorFurniture", RoomCenter + new Vector3(-hw + 1.4f, 0.02f, -hd + 1.6f), new Vector3(2.2f, 1.2f, 1.4f), interiorRoot.transform, 0f, false);
+            Entities.CharacterRig.InstantiateGlb("Props/air_conditioner", "IndoorSplitAC", RoomCenter + new Vector3(0f, 3.2f, -hd + 0.35f), new Vector3(1.1f, 0.5f, 0.4f), interiorRoot.transform, 0f, false);
+            Entities.CharacterRig.InstantiateGlb("Props/doors_window", "IndoorEntryDoor", RoomCenter + new Vector3(0f, 0.02f, hd - 0.25f), new Vector3(1.8f, 2.3f, 0.3f), interiorRoot.transform, 0f, false);
+            Entities.CharacterRig.InstantiateGlb("Props/newspaper_stack", "IndoorMagazines", RoomCenter + new Vector3(hw - 1.5f, 0.02f, -hd + 1.5f), new Vector3(0.65f, 0.45f, 0.65f), interiorRoot.transform, 0f, false);
+            if (home || kind == "gym")
+                Entities.CharacterRig.InstantiateGlb("Props/football_shirt", "FramedSuperEaglesJersey", RoomCenter + new Vector3(-hw + 0.35f, 1.8f, -1.5f), new Vector3(0.9f, 1.1f, 0.3f), interiorRoot.transform, 90f, false);
+
             Physics.SyncTransforms();
             ActiveMenu = null;
             Player.MinFloorY = RoomCenter.y;
@@ -320,8 +349,7 @@ namespace Rise
                 ClearShootoutEnemies();
             }
             IndoorStations.Clear();
-            Destroy(interiorRoot);
-            interiorRoot = null;
+            DestroyInteriorRoot();
             Player.MinFloorY = null;
             Player.Teleport(interiorOutdoorPos, interiorOutdoorYaw);
             if (Camera != null) { Camera.Yaw = interiorOutdoorYaw; Camera.SetIndoor(false); }

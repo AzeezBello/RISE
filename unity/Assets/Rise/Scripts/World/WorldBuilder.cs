@@ -14,8 +14,11 @@ namespace Rise.World
 
         public WorldData Data { get; private set; }
         public Transform Root { get; private set; }
+        public Transform GlbRoot { get; private set; }
         public Material LampHead { get; private set; }
         public int ObjectCount { get; private set; }
+        public int GlbModelCount { get; private set; }
+        int glbHouseBudget;
 
         readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
         readonly List<Vector2> placedPlots = new List<Vector2>();
@@ -28,11 +31,16 @@ namespace Rise.World
             Water = "#2b6e8f", Sand = "#d9c8a0", Pitch = "#4f8a3a", Zinc = "#5b5f63", Glass = "#7fa6c4", Yellow = "#f5c518",
             Black = "#141414", Steel = "#7d8287", LampWarm = "#ffd27a", Cream = "#e2d6bf", BrtBlue = "#1559b8", LawmaOrange = "#ff6a00";
         static readonly string[] HouseColours = { "#e2d6bf", "#d8b98c", "#c9c2b3", "#b8c4cc", "#d9a66e", "#c7b7a2", "#e8e0d0", "#a9b7a1", "#e6c786", "#c48b71", "#9bb0a8", "#d4c4a8" };
+        static readonly string[] RustyWoodenHouseModels = { "Landmarks/rusty_roof_wooden_house_1_3d_model_free", "Landmarks/rusty_roof_wooden_house_3d_model_free" };
+        static readonly string[] ResidentialHouseModels = { "Landmarks/simple_house", "Landmarks/modular_house", "Landmarks/jasons_house", "Landmarks/heritage_house" };
+        static readonly string[] UrbanBlockModels = { "Landmarks/street_city_block", "Landmarks/urban_street_scene", "Landmarks/carentan_street_scene" };
 
         public void Build(WorldData data)
         {
             Data = data;
             placedPlots.Clear();
+            GlbModelCount = 0;
+            glbHouseBudget = GameBootstrap.Mobile ? 28 : 110;
             if (GameBootstrap.Mobile)
             {
                 MaxHouses = Mathf.Min(MaxHouses, Application.isEditor ? 2200 : 580);
@@ -47,9 +55,12 @@ namespace Rise.World
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             Root = new GameObject("Lagos").transform;
             Root.SetParent(transform, false);
+            GlbRoot = new GameObject("LagosGlbModels").transform;
+            GlbRoot.SetParent(transform, false);
             LampHead = Mat("lamp", LampWarm, 0.3f, true);
 
             BuildGround();
+            BuildTerrainFeatures();
             BuildWater();
             BuildRoads();
             BuildBridges();
@@ -67,7 +78,32 @@ namespace Rise.World
             BuildVegetation();
 
             if (!GameBootstrap.Mobile) StaticBatchingUtility.Combine(Root.gameObject);
+            GlbRoot.SetParent(Root, true);
             BuildMovingTrains();
+        }
+
+        GameObject SpawnWorldGlb(string subpath, string name, Vector3 pos, Vector3 targetSize, float yaw = 0f, bool addCollider = true)
+        {
+            var go = Entities.CharacterRig.InstantiateGlb(subpath, name, pos, targetSize, GlbRoot != null ? GlbRoot : Root, yaw, addCollider);
+            if (go != null) { GlbModelCount++; ObjectCount++; }
+            return go;
+        }
+
+        void BuildTerrainFeatures()
+        {
+            // 3D Retextured Terrain ridges & outskirt highlands (Olumo Rock Abeokuta, Aso Rock Abuja, Udi Hills Enugu, Berger/Epe ridges)
+            (Vector3 pos, Vector3 size, float yaw, string label)[] ridges =
+            {
+                (new Vector3(-420f, -0.4f, 1480f), new Vector3(180f, 26f, 160f), 15f,  "Berger & Ogun Outskirt Ridge"),
+                (new Vector3(1480f, -0.4f, -380f), new Vector3(210f, 28f, 180f), 110f, "Epe & Ijebu Coastal Highlands"),
+                (new Vector3(-780f, -0.4f, 1820f), new Vector3(220f, 38f, 190f), 45f,  "Abeokuta Olumo Highland Terrain"),
+                (new Vector3(920f,  -0.4f, 2150f), new Vector3(260f, 46f, 220f), -30f, "Abuja Aso Rock & Central Highlands"),
+            };
+            foreach (var r in ridges)
+            {
+                if (NearRoadData(r.pos.x, -r.pos.z, 42f)) continue;
+                SpawnWorldGlb("Landmarks/terrain_retextured", r.label, r.pos, r.size, r.yaw, false);
+            }
         }
 
         // ---------- materials and primitives ----------
@@ -75,7 +111,7 @@ namespace Rise.World
         Material Mat(string key, string hex, float smoothness = 0.15f, bool emissive = false)
         {
             if (materials.TryGetValue(key, out var m)) return m;
-            m = new Material(standard) { name = key };
+            m = new Material(standard) { name = key, enableInstancing = true };
             var col = Hex(hex);
             m.color = col;
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col);
@@ -417,11 +453,14 @@ namespace Rise.World
                         continue;
                     case "checkpoint": case "post":
                         Box(l.name, pos + Vector3.up * 1.6f, new Vector3(5f, 3.2f, 3.5f), Mat("lm-" + l.color, l.color), group);
+                        SpawnWorldGlb("Landmarks/wooden_watchtower", l.name + " Watchtower", pos + new Vector3(4.8f, 0f, 0f), new Vector3(4.2f, 7.5f, 4.2f), 0f);
                         Sign(l.shortName, pos + new Vector3(0, 4.2f, 0), l.sign, 0.8f, group);
                         continue;
                     case "pitch":
                     {
                         Box(l.name, pos + Vector3.up * 0.12f, new Vector3(44f, 0.24f, 30f), Mat("pitch", Pitch), group);
+                        SpawnWorldGlb("Landmarks/football_court", l.name + " Court", pos + new Vector3(0f, 0.05f, 0f), new Vector3(42f, 6f, 28f), 0f, false);
+                        SpawnWorldGlb("Props/football_shirt", "Home Jersey Display", pos + new Vector3(-4f, 0.9f, 15.2f), new Vector3(1.1f, 1.3f, 0.6f), 180f, false);
                         var white = Mat("pitchline", "#f5f5f0");
                         var postMat = Mat("goalpost", "#eeeeee", 0.5f);
                         Box("Center line", pos + Vector3.up * 0.25f, new Vector3(0.25f, 0.02f, 28f), white, group, false);
@@ -550,8 +589,12 @@ namespace Rise.World
                         for (int i = -2; i <= 2; i++)
                         {
                             var hutPos = pos + new Vector3(i * 9f, 1.6f, -8f + (i % 2) * 5f);
-                            Box("Stilt hut", hutPos + Vector3.up * 1.2f, new Vector3(5.5f, 2.6f, 4.5f), wood, group);
-                            Box("Hut roof", hutPos + Vector3.up * 2.65f, new Vector3(6.1f, 0.22f, 5.1f), zinc, group, false);
+                            string rustyModel = RustyWoodenHouseModels[Mathf.Abs(i) % RustyWoodenHouseModels.Length];
+                            if (SpawnWorldGlb(rustyModel, "Makoko Rusty Roof Wooden House", hutPos, new Vector3(6.8f, 4.6f, 5.8f), (i * 90f) % 360f) == null)
+                            {
+                                Box("Stilt hut", hutPos + Vector3.up * 1.2f, new Vector3(5.5f, 2.6f, 4.5f), wood, group);
+                                Box("Hut roof", hutPos + Vector3.up * 2.65f, new Vector3(6.1f, 0.22f, 5.1f), zinc, group, false);
+                            }
                             var canoePos = pos + new Vector3(i * 8f + 3f, 0.25f, -16f);
                             BuildFishingBoat(canoePos, 0f, wood, zinc, group);
                         }
@@ -579,8 +622,25 @@ namespace Rise.World
                 }
                 var fp = Footprint(l);
                 float h = Mathf.Max(3f, l.h);
-                Box(l.name, pos + Vector3.up * h * 0.5f, new Vector3(fp.x, h, fp.y), body, group);
-                Box(l.name + " parapet", pos + Vector3.up * (h + 0.3f), new Vector3(fp.x + 0.6f, 0.6f, fp.y + 0.6f), Mat("parapet", "#6b655a"), group, false);
+                string lmGlb = l.kind switch
+                {
+                    "market" => "Landmarks/automapping_market",
+                    "school" or "college" or "gov" or "hospital" or "police" => "Landmarks/court_hall",
+                    "museum" => "Landmarks/heritage_house",
+                    "warehouse" or "service" or "artisan" => "Landmarks/old_factory",
+                    "hotel" => "Landmarks/hills_estate",
+                    _ => null
+                };
+                if (lmGlb != null && SpawnWorldGlb(lmGlb, l.name, pos, new Vector3(fp.x, h + 1.5f, fp.y), 0f) != null)
+                {
+                    if (l.kind == "museum")
+                        SpawnWorldGlb("Characters/caveman_statue", l.name + " Monument", pos + new Vector3(0f, 0f, fp.y * 0.5f + 2.2f), new Vector3(2.2f, 3.4f, 2.2f), 180f, false);
+                }
+                else
+                {
+                    Box(l.name, pos + Vector3.up * h * 0.5f, new Vector3(fp.x, h, fp.y), body, group);
+                    Box(l.name + " parapet", pos + Vector3.up * (h + 0.3f), new Vector3(fp.x + 0.6f, 0.6f, fp.y + 0.6f), Mat("parapet", "#6b655a"), group, false);
+                }
                 // Sign board on the street-facing side (north: data -z, world +z).
                 var signPos = pos + new Vector3(0, h + 1.3f, fp.y * 0.5f + 0.2f);
                 Box(l.name + " board", signPos, new Vector3(Mathf.Min(fp.x * 0.9f, 2.2f + l.shortName.Length * 1.05f), 1.8f, 0.25f), Mat("board", "#1b1b1f"), group, false);
@@ -635,10 +695,24 @@ namespace Rise.World
         // and along the Eko Atlantic shore, height-fitted with a little jitter, kept off the road shoulders.
         void BuildVegetation()
         {
-            var group = new GameObject("Vegetation").transform; group.SetParent(Root, false);
+            var group = new GameObject("Vegetation").transform; group.SetParent(GlbRoot != null ? GlbRoot : Root, false);
             var plan = GameBootstrap.Mobile
-                ? new (string model, int count, float height)[] { ("jabami_anime_tree-grass_v1", 10, 6f), ("tree_spruce_pine", 4, 7f) }
-                : new (string model, int count, float height)[] { ("jabami_anime_tree-grass_v1", 22, 6f), ("tree_spruce_pine", 9, 7f) };
+                ? new (string model, int count, float height)[]
+                {
+                    ("jabami_anime_tree-grass_v1", 8, 6f),
+                    ("maple_tree", 4, 6.5f),
+                    ("tree_spruce_pine", 4, 7f),
+                    ("game_ready_grass", 6, 1.1f),
+                    ("mud_grassland", 4, 0.6f)
+                }
+                : new (string model, int count, float height)[]
+                {
+                    ("jabami_anime_tree-grass_v1", 18, 6f),
+                    ("maple_tree", 10, 6.8f),
+                    ("tree_spruce_pine", 8, 7f),
+                    ("game_ready_grass", 14, 1.1f),
+                    ("mud_grassland", 8, 0.65f)
+                };
             var zones = new (float x0, float x1, float z0, float z1)[] { (-120, -22, -120, -22), (22, 120, -120, -22), (-120, -22, 22, 120), (22, 120, 22, 120), (346, 614, 315, 330) };
             var rng = new System.Random(42);
             foreach (var (model, count, height) in plan)
@@ -1084,18 +1158,30 @@ namespace Rise.World
         void BuildProperties()
         {
             var group = new GameObject("Properties").transform; group.SetParent(Root, false);
+            int pIdx = 0;
             foreach (var p in Data.properties)
             {
                 var pos = p.World();
                 float h = Mathf.Max(3.2f, p.h);
                 Compound(pos, 20f, 18f, group);
-                Box(p.name, pos + Vector3.up * h * 0.5f, new Vector3(13f, h, 10f), Mat("pr-" + p.color, p.color), group);
-                if (p.style == "bungalow") Box("Roof", pos + Vector3.up * (h + 0.2f), new Vector3(14f, 0.4f, 11f), Mat("zinc", Zinc, 0.5f), group, false);
-                else Box("Parapet", pos + Vector3.up * (h + 0.25f), new Vector3(13.6f, 0.5f, 10.6f), Mat("parapet", "#6b655a"), group, false);
+                string propModel = p.style == "bungalow"
+                    ? RustyWoodenHouseModels[pIdx % RustyWoodenHouseModels.Length]
+                    : p.buy >= 50000000
+                        ? "Landmarks/hills_estate"
+                        : ResidentialHouseModels[pIdx % ResidentialHouseModels.Length];
+                pIdx++;
+                if (SpawnWorldGlb(propModel, p.name, pos, new Vector3(13f, h + 1.4f, 10f), 0f) == null)
+                {
+                    Box(p.name, pos + Vector3.up * h * 0.5f, new Vector3(13f, h, 10f), Mat("pr-" + p.color, p.color), group);
+                    if (p.style == "bungalow") Box("Roof", pos + Vector3.up * (h + 0.2f), new Vector3(14f, 0.4f, 11f), Mat("zinc", Zinc, 0.5f), group, false);
+                    else Box("Parapet", pos + Vector3.up * (h + 0.25f), new Vector3(13.6f, 0.5f, 10.6f), Mat("parapet", "#6b655a"), group, false);
+                }
                 if (!GameBootstrap.Mobile)
                 {
-                    Box("AC unit", pos + new Vector3(-4.2f, 2.4f, 5.18f), new Vector3(0.85f, 0.55f, 0.35f), Mat("ac-unit", "#d8dce0"), group, false);
-                    Box("Front door", pos + new Vector3(0f, 1.15f, 5.08f), new Vector3(1.5f, 2.3f, 0.16f), Mat("door-wood", "#4a3222"), group, false);
+                    if (SpawnWorldGlb("Props/air_conditioner", "AC Unit", pos + new Vector3(-4.2f, 2.2f, 5.18f), new Vector3(0.95f, 0.65f, 0.45f), 0f, false) == null)
+                        Box("AC unit", pos + new Vector3(-4.2f, 2.4f, 5.18f), new Vector3(0.85f, 0.55f, 0.35f), Mat("ac-unit", "#d8dce0"), group, false);
+                    if (SpawnWorldGlb("Props/doors_window", "Front Door & Window", pos + new Vector3(0f, 0.1f, 5.12f), new Vector3(2.4f, 2.5f, 0.35f), 0f, false) == null)
+                        Box("Front door", pos + new Vector3(0f, 1.15f, 5.08f), new Vector3(1.5f, 2.3f, 0.16f), Mat("door-wood", "#4a3222"), group, false);
                 }
                 if (!string.IsNullOrEmpty(p.sign)) Sign(p.sign, pos + new Vector3(0, 2.6f, 10.6f), "#ffffff", 0.6f, group);
             }
@@ -1162,6 +1248,24 @@ namespace Rise.World
 
         void House(Vector3 pos, float w, float d, float h, string colour, bool zincRoof, Transform group)
         {
+            if (glbHouseBudget > 0)
+            {
+                int hash = Mathf.Abs(Mathf.RoundToInt(pos.x * 19f + pos.z * 37f));
+                if (zincRoof || hash % 5 == 0)
+                {
+                    string model = zincRoof
+                        ? RustyWoodenHouseModels[hash % RustyWoodenHouseModels.Length]
+                        : h > 11f
+                            ? UrbanBlockModels[hash % UrbanBlockModels.Length]
+                            : ResidentialHouseModels[hash % ResidentialHouseModels.Length];
+                    float yaw = (hash % 4) * 90f;
+                    if (SpawnWorldGlb(model, zincRoof ? "Rusty Roof Wooden House" : "Residential House", pos, new Vector3(w, h + 1.2f, d), yaw) != null)
+                    {
+                        glbHouseBudget--;
+                        return;
+                    }
+                }
+            }
             Box("House", pos + Vector3.up * h * 0.5f, new Vector3(w, h, d), Mat("house-" + colour, colour), group);
             if (zincRoof && h < 5f) Box("Roof", pos + Vector3.up * (h + 0.15f), new Vector3(w + 1f, 0.3f, d + 1f), Mat("zinc", Zinc, 0.5f), group, false);
             else Box("Parapet", pos + Vector3.up * (h + 0.25f), new Vector3(w + 0.4f, 0.5f, d + 0.4f), Mat("parapet", "#6b655a"), group, false);
@@ -1408,17 +1512,24 @@ namespace Rise.World
         void BuildStreetFurniture()
         {
             var group = new GameObject("Kiosks and vendors").transform; group.SetParent(Root, false);
+            int kIdx = 0;
             foreach (var k in Data.kiosks)
             {
                 var pos = k.World(0.3f);
                 Box("Kiosk", pos + Vector3.up * 1.3f, new Vector3(2.6f, 2.6f, 2.2f), Mat("kiosk", "#2e7d32"), group);
                 Sign("POS", pos + new Vector3(0, 3.1f, 0), "#ffffff", 0.6f, group);
+                if (kIdx++ < 12)
+                    SpawnWorldGlb("Props/newspaper_stack", "Newspaper Stand", pos + new Vector3(-1.55f, 0f, 0.4f), new Vector3(0.75f, 0.65f, 0.75f), 0f, false);
                 BuildLawmaBin(pos + new Vector3(1.9f, 0f, 0f), group, false);
             }
+            int vIdx = 0;
             foreach (var v in Data.vendors)
             {
                 var pos = v.World(0.3f);
-                Box("Table", pos + Vector3.up * 0.5f, new Vector3(2f, 0.9f, 1.2f), Mat("stall", "#7a5a3a"), group);
+                if (vIdx++ < 14)
+                    SpawnWorldGlb("Props/wood_furniture", "Vendor Table", pos, new Vector3(2.1f, 1.05f, 1.3f), 0f, false);
+                else
+                    Box("Table", pos + Vector3.up * 0.5f, new Vector3(2f, 0.9f, 1.2f), Mat("stall", "#7a5a3a"), group);
                 Box("Umbrella", pos + Vector3.up * 2.4f, new Vector3(2.6f, 0.12f, 2.6f), Mat("umbrella", "#d9534f"), group, false);
             }
             if (Data.TryPlace("lawma", out var lawmaDepot))

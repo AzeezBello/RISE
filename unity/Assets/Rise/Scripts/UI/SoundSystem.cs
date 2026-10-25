@@ -10,7 +10,9 @@ namespace Rise.UI
 
         Session session;
         AudioSource engineSrc, rainSrc, genSrc, streetAmbienceSrc, owambeMusicSrc, sfxSrc;
-        AudioClip chimeClip, hornClip, gunshotClip, whistleClip, kickClip, crowdClip, streetAmbienceClip, owambeMusicClip;
+        readonly AudioSource[] sfxPool = new AudioSource[4];
+        int sfxPoolIdx;
+        AudioClip chimeClip, hornClip, gunshotClip, whistleClip, kickClip, woodworkClip, crowdClip, streetAmbienceClip, owambeMusicClip;
         public bool Initialized { get; private set; }
         public string CurrentBiome { get; private set; } = "coastal";
         public string CurrentMusicStyle { get; private set; } = "Afrobeats & Owambe";
@@ -81,17 +83,35 @@ namespace Rise.UI
             owambeMusicClip = MakeOwambeMusicClip();
             streetAmbienceSrc = MakeLoopSource("Lagos Street Ambience", streetAmbienceClip);
             owambeMusicSrc = MakeLoopSource("Owambe & Afrobeats Music", owambeMusicClip);
-            sfxSrc = gameObject.AddComponent<AudioSource>();
-            sfxSrc.playOnAwake = false;
-            sfxSrc.spatialBlend = 0f;
+            for (int i = 0; i < sfxPool.Length; i++)
+            {
+                var src = i == 0 ? gameObject.AddComponent<AudioSource>() : new GameObject("SFX_Voice_" + i).AddComponent<AudioSource>();
+                if (i > 0) src.transform.SetParent(transform, false);
+                src.playOnAwake = false;
+                src.spatialBlend = 0f;
+                sfxPool[i] = src;
+            }
+            sfxSrc = sfxPool[0];
 
             chimeClip = MakeChimeClip();
             hornClip = MakeHornClip();
             gunshotClip = MakeGunshotClip();
             whistleClip = MakeWhistleClip();
             kickClip = MakeKickClip();
+            woodworkClip = MakeWoodworkClip();
             crowdClip = MakeCrowdClip();
             Initialized = true;
+        }
+
+        void PlayPolySfx(AudioClip clip, float volume, float pitchJitter = 0.05f)
+        {
+            if (!Initialized || session?.State?.S == null || !session.State.S.sound || clip == null) return;
+            var src = sfxPool[sfxPoolIdx];
+            sfxPoolIdx = (sfxPoolIdx + 1) % sfxPool.Length;
+            if (src == null) src = sfxSrc;
+            if (src == null) return;
+            src.pitch = pitchJitter > 0.001f ? 1f + Random.Range(-pitchJitter, pitchJitter) : 1f;
+            src.PlayOneShot(clip, volume);
         }
 
         AudioSource MakeLoopSource(string label, AudioClip clip)
@@ -271,23 +291,11 @@ namespace Rise.UI
             return clip;
         }
 
-        public void PlayCash()
-        {
-            if (!Initialized || session?.State?.S == null || !session.State.S.sound || sfxSrc == null || chimeClip == null) return;
-            sfxSrc.PlayOneShot(chimeClip, 0.5f);
-        }
+        public void PlayCash() => PlayPolySfx(chimeClip, 0.5f, 0.02f);
 
-        public void PlayHorn()
-        {
-            if (!Initialized || session?.State?.S == null || !session.State.S.sound || sfxSrc == null || hornClip == null) return;
-            sfxSrc.PlayOneShot(hornClip, 0.5f);
-        }
+        public void PlayHorn() => PlayPolySfx(hornClip, 0.52f, 0.06f);
 
-        public void PlayGunshot(float volume = 0.6f)
-        {
-            if (!Initialized || session?.State?.S == null || !session.State.S.sound || sfxSrc == null || gunshotClip == null) return;
-            sfxSrc.PlayOneShot(gunshotClip, volume);
-        }
+        public void PlayGunshot(float volume = 0.6f) => PlayPolySfx(gunshotClip, volume, 0.06f);
 
         static AudioClip MakeWhistleClip()
         {
@@ -341,23 +349,29 @@ namespace Rise.UI
             return clip;
         }
 
-        public void PlayWhistle()
+        static AudioClip MakeWoodworkClip()
         {
-            if (!Initialized || session?.State?.S == null || !session.State.S.sound || sfxSrc == null || whistleClip == null) return;
-            sfxSrc.PlayOneShot(whistleClip, 0.45f);
+            int n = Mathf.RoundToInt(SampleRate * 0.32f);
+            var data = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / SampleRate;
+                float ring = Mathf.Sin(t * 620f * Mathf.PI * 2f) * 0.55f + Mathf.Sin(t * 1180f * Mathf.PI * 2f) * 0.35f + Mathf.Sin(t * 195f * Mathf.PI * 2f) * 0.4f;
+                float env = Mathf.Exp(-t * 14f);
+                data[i] = Mathf.Clamp(ring * env * 0.6f, -1f, 1f);
+            }
+            var clip = AudioClip.Create("WoodworkClang", n, 1, SampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
         }
 
-        public void PlayKick(float volume = 0.55f)
-        {
-            if (!Initialized || session?.State?.S == null || !session.State.S.sound || sfxSrc == null || kickClip == null) return;
-            sfxSrc.PlayOneShot(kickClip, volume);
-        }
+        public void PlayWhistle() => PlayPolySfx(whistleClip, 0.45f, 0.02f);
 
-        public void PlayCrowdCheer()
-        {
-            if (!Initialized || session?.State?.S == null || !session.State.S.sound || sfxSrc == null || crowdClip == null) return;
-            sfxSrc.PlayOneShot(crowdClip, 0.55f);
-        }
+        public void PlayKick(float volume = 0.55f) => PlayPolySfx(kickClip, volume, 0.07f);
+
+        public void PlayWoodwork() => PlayPolySfx(woodworkClip, 0.72f, 0.04f);
+
+        public void PlayCrowdCheer() => PlayPolySfx(crowdClip, 0.55f, 0.04f);
 
         void Update()
         {

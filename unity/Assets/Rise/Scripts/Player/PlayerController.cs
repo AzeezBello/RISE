@@ -35,6 +35,14 @@ namespace Rise.Player
         public bool IsSwinging => swingT > 0f;
         Transform combatArcRoot, combatImpactRing;
         readonly System.Collections.Generic.List<Material> combatArcMats = new System.Collections.Generic.List<Material>();
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+
+        void OnDestroy()
+        {
+            for (int i = 0; i < combatArcMats.Count; i++)
+                if (combatArcMats[i] != null) Destroy(combatArcMats[i]);
+            combatArcMats.Clear();
+        }
 
         public bool IsEquippedGun =>
             EquippedWeapon == "pistol" || EquippedWeapon == "shotgun" || EquippedWeapon == "smg" ||
@@ -281,7 +289,11 @@ namespace Rise.Player
                 ? new Color(1.0f, 0.32f, 0.16f, 0.90f * env)
                 : new Color(1.0f, 0.84f, 0.18f, 0.88f * env);
             foreach (var m in combatArcMats)
-                if (m != null) m.color = arcCol;
+            {
+                if (m == null) continue;
+                m.color = arcCol;
+                if (m.HasProperty(BaseColorId)) m.SetColor(BaseColorId, arcCol);
+            }
 
             float sweepYaw = step == 1 ? Mathf.Lerp(-52f, 52f, u) : Mathf.Lerp(48f, -48f, u);
             float roll = step == 0 ? (hasWeapon ? -32f : -12f) : step == 1 ? 8f : -45f;

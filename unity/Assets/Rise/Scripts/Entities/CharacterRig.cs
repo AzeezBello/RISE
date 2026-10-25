@@ -1325,7 +1325,13 @@ namespace Rise.Entities
                         Color col = src.HasProperty("baseColorFactor") ? src.GetColor("baseColorFactor") : src.color;
                         lit.color = col;
                         if (lit.HasProperty("_BaseColor")) lit.SetColor("_BaseColor", col);
+                        if (src.HasProperty("bumpTexture"))
+                        {
+                            var bump = src.GetTexture("bumpTexture");
+                            if (bump != null && lit.HasProperty("_BumpMap")) lit.SetTexture("_BumpMap", bump);
+                        }
                         lit.SetFloat("_Smoothness", smoothness);
+                        lit.enableInstancing = true;
                         glbLitMatCache[src] = lit;
                     }
                     mats[i] = lit;

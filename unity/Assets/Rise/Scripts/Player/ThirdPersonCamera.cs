@@ -7,11 +7,13 @@ namespace Rise.Player
     // round over a second instead of snapping: the feel described in README "Camera and controller feel".
     public class ThirdPersonCamera : MonoBehaviour
     {
+        public static ThirdPersonCamera I { get; private set; }
         public Transform Target;
         public PlayerController Player;
         public float Distance = 6.8f, Height = 1.9f, Yaw = 180f, Pitch = 14f;
-        public float MouseSensitivity = 2.2f, KeyYawSpeed = 110f, BaseFov = 60f, SprintFov = 69f;
+        public float MouseSensitivity = 2.2f, KeyYawSpeed = 110f, BaseFov = 60f, SprintFov = 69f, NosFov = 75f;
         public bool IndoorMode { get; private set; }
+        public float Trauma { get; private set; }
 
         Camera cam;
         Vehicles.VehicleController vehicle;
@@ -22,10 +24,16 @@ namespace Rise.Player
 
         void Awake()
         {
+            I = this;
             cam = GetComponent<Camera>();
             currentDistance = targetDistance = Distance; targetHeight = Height;
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
+        }
+
+        public void AddShake(float amount)
+        {
+            Trauma = Mathf.Clamp01(Trauma + Mathf.Max(0f, amount));
         }
 
         public void SetIndoor(bool indoor)
@@ -80,6 +88,7 @@ namespace Rise.Player
         {
             if (Target == null) return;
             float dt = Time.deltaTime;
+            if (dt <= 0.00001f) return;   // Guard SmoothDamp & exponential damping when paused (Time.timeScale == 0)
             var look = GameInput.LookDelta;
             float mx = look.x, my = look.y;
             if (GameInput.LookLeftKey) mx -= KeyYawSpeed * dt / MouseSensitivity;
@@ -115,12 +124,29 @@ namespace Rise.Player
 
             if (!lookPointReady) { lookPoint = pivot; lookPointReady = true; }
             lookPoint = Vector3.Lerp(lookPoint, pivot, 1f - Mathf.Exp(-12f * dt));
-            transform.rotation = Quaternion.LookRotation(lookPoint - transform.position, Vector3.up);
+            var baseRot = Quaternion.LookRotation(lookPoint - transform.position, Vector3.up);
+
+            if (Trauma > 0.001f)
+            {
+                float shake = Trauma * Trauma;
+                float t = Time.unscaledTime * 28f;
+                float sx = (Mathf.PerlinNoise(t, 1.3f) - 0.5f) * 2f * 2.2f * shake;
+                float sy = (Mathf.PerlinNoise(2.7f, t) - 0.5f) * 2f * 2.2f * shake;
+                float sz = (Mathf.PerlinNoise(t, 5.1f) - 0.5f) * 2f * 1.6f * shake;
+                transform.rotation = baseRot * Quaternion.Euler(sx, sy, sz);
+                Trauma = Mathf.Max(0f, Trauma - 1.85f * dt);
+            }
+            else
+            {
+                transform.rotation = baseRot;
+            }
 
             if (cam != null)
             {
+                bool nosBoost = vehicle != null && vehicle.HasNos && GameInput.Sprint && vehicle.Kmh > 35f;
                 float speed01 = vehicle != null ? Mathf.Clamp01(vehicle.Kmh / 110f) : (Player != null && Player.IsRunning ? Player.Speed01 : 0f);
-                cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, Mathf.Lerp(BaseFov, SprintFov, speed01), 1f - Mathf.Exp(-4f * dt));
+                float targetFov = nosBoost ? NosFov : Mathf.Lerp(BaseFov, SprintFov, speed01);
+                cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFov, 1f - Mathf.Exp(-4.5f * dt));
             }
         }
     }

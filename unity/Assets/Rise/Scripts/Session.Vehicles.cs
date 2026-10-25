@@ -122,6 +122,7 @@ namespace Rise
         // ---- Need for Speed (NFS) Underground Tuning, Performance, Aero & Paint Garage ----
         GameObject nfsBayRoot;
         Transform nfsTurntable, nfsShowcaseCar;
+        readonly System.Collections.Generic.List<Material> nfsBayMaterials = new System.Collections.Generic.List<Material>();
 
         public bool InNfsGarageBay => nfsBayRoot != null;
 
@@ -212,9 +213,16 @@ namespace Rise
                     if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
                     m.SetFloat("_Smoothness", gloss);
                     if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", met);
+                    nfsBayMaterials.Add(m);
                     return m;
                 }
-                Material Neon(Color c) => new Material(unlit) { color = c };
+                Material Neon(Color c)
+                {
+                    var m = new Material(unlit) { color = c };
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                    nfsBayMaterials.Add(m);
+                    return m;
+                }
                 void BoxPart(string n, Vector3 lp, Vector3 sc, Material m)
                 {
                     var g = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -266,6 +274,11 @@ namespace Rise
                 l2.transform.SetParent(nfsBayRoot.transform, false);
                 l2.transform.position = bayCenter + new Vector3(4.5f, 2.8f, 4.5f);
                 l2.type = LightType.Point; l2.range = 18f; l2.intensity = 2.0f; l2.color = new Color(0f, 0.85f, 1f);
+
+                // 3D Garage Workshop Props
+                Entities.CharacterRig.InstantiateGlb("Props/wood_furniture", "GarageWorkBench", bayCenter + new Vector3(-7.4f, 0.02f, 6.2f), new Vector3(2.4f, 1.3f, 1.4f), nfsBayRoot.transform, 90f, false);
+                Entities.CharacterRig.InstantiateGlb("Props/air_conditioner", "GarageBayAC", bayCenter + new Vector3(0f, 4.8f, 9.1f), new Vector3(1.3f, 0.6f, 0.45f), nfsBayRoot.transform, 180f, false);
+                Entities.CharacterRig.InstantiateGlb("Props/newspaper_stack", "TuningCatalogs", bayCenter + new Vector3(-7.1f, 0.95f, 6.2f), new Vector3(0.55f, 0.35f, 0.55f), nfsBayRoot.transform, 15f, false);
             }
 
             SyncGarageShowcase(vc, ov);
@@ -289,6 +302,9 @@ namespace Rise
                 nfsTurntable = null;
                 nfsShowcaseCar = null;
             }
+            for (int i = 0; i < nfsBayMaterials.Count; i++)
+                if (nfsBayMaterials[i] != null) Destroy(nfsBayMaterials[i]);
+            nfsBayMaterials.Clear();
             if (Camera != null)
             {
                 Camera.SetDriving(Vehicle != null ? Vehicle.transform : null);

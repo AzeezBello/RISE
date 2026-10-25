@@ -58,9 +58,9 @@ namespace Rise.World
         {
             Chunks.Clear();
             if (worldRoot == null) return;
-            // Index Housing, Street Furniture, Billboards, and Vegetation into 500m x 500m spatial cells.
+            // Index Housing, Street Furniture, Billboards, Vegetation, and GLB world models into 500m x 500m spatial cells.
             // Roads, Bridges, Landmarks, BusStops, and Properties remain globally active for navigation & physics.
-            string[] streamGroups = { "Housing", "Vegetation", "Street Furniture", "Billboards" };
+            string[] streamGroups = { "Housing", "Vegetation", "Street Furniture", "Billboards", "LagosGlbModels" };
             foreach (var groupName in streamGroups)
             {
                 var grp = worldRoot.Find(groupName);

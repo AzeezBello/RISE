@@ -524,6 +524,7 @@ namespace Rise
                 if (Mathf.Abs(Vehicle.Speed) < 0.5f) { Exit(); sinking = false; return; }
             }
             else sinking = false;
+            if (GameInput.HornPressed) UI.SoundSystem.I?.PlayHorn();
             Vehicle.Drive(gas, brake, boost, hand, h, State.S.fuel / 100f, dt);
             if (State.S.fuel <= 0.05f && gas > 0.1f && Time.time - outOfFuelToastT > 4.5f)
             {
@@ -531,7 +532,13 @@ namespace Rise
                 State.Toast("Out of fuel (0%)! Engine stalled — use Emergency Jerrycan on your Phone [P] or Pause Menu [Esc].");
             }
             if (Player != null) Player.transform.position = Vehicle.transform.position;
-            if (Vehicle.LastImpact > 2f) { UI.SoundSystem.I?.PlayHorn(); State.Toast(Vehicle.LastImpact > 8f ? "Crash! Vehicle damaged" : "Scrape"); Vehicle.LastImpact = 0f; }
+            if (Vehicle.LastImpact > 2f)
+            {
+                UI.SoundSystem.I?.PlayHorn();
+                Camera?.AddShake(Mathf.Clamp01(Vehicle.LastImpact / 16f));
+                State.Toast(Vehicle.LastImpact > 8f ? "Crash! Vehicle damaged" : "Scrape");
+                Vehicle.LastImpact = 0f;
+            }
             bool slow = Mathf.Abs(Vehicle.Speed) < 2f;
             Prompt = null;
             if (slow && TaskDeliverable()) { Prompt = DeliverLabel(); if (Interact()) { FinishTask(true); return; } }

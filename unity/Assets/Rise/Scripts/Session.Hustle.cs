@@ -596,6 +596,8 @@ namespace Rise
             public Transform Root;
             public RigInstance Rig;
             public string Name, Role;
+            public string LabelNormal, LabelBall;
+            public bool WasCarrier;
             public int Number;
             public bool IsHome, IsKeeper;
             public Vector3 FormationOffset;
@@ -637,6 +639,7 @@ namespace Rise
             public string LastShotQualityLabel = "";
             public string SavedWeapon = "";
             public readonly List<Footballer> Players = new List<Footballer>();
+            public readonly List<Material> CreatedMaterials = new List<Material>();
         }
 
         [System.NonSerialized] public LiveFootballMatch ActiveFootball;
@@ -784,10 +787,17 @@ namespace Rise
             root.SetParent(transform, false);
             m.MatchPropsRoot = root;
 
-            var whiteMat = new Material(ShaderLib.Unlit) { color = new Color(0.96f, 0.98f, 0.96f, 0.9f) };
-            var netMat = new Material(ShaderLib.Unlit) { color = new Color(0.92f, 0.95f, 0.98f, 0.38f) };
-            var boardMat = new Material(ShaderLib.Lit) { color = new Color(0.06f, 0.18f, 0.12f) };
-            var goldMat = new Material(ShaderLib.Unlit) { color = new Color(0.98f, 0.78f, 0.18f) };
+            Material MakePitchMat(Shader sh, Color col)
+            {
+                var mat = new Material(sh) { color = col };
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", col);
+                m.CreatedMaterials.Add(mat);
+                return mat;
+            }
+            var whiteMat = MakePitchMat(ShaderLib.Unlit, new Color(0.96f, 0.98f, 0.96f, 0.9f));
+            var netMat = MakePitchMat(ShaderLib.Unlit, new Color(0.92f, 0.95f, 0.98f, 0.38f));
+            var boardMat = MakePitchMat(ShaderLib.Lit, new Color(0.06f, 0.18f, 0.12f));
+            var goldMat = MakePitchMat(ShaderLib.Unlit, new Color(0.98f, 0.78f, 0.18f));
             var c = m.PitchCenter;
             float y = m.PitchSurfaceY + 0.01f;
 
@@ -849,13 +859,13 @@ namespace Rise
             ballSphere.name = "BallMesh";
             ballSphere.transform.SetParent(ballRoot, false);
             ballSphere.transform.localScale = Vector3.one * 0.46f;
-            var ballMat = new Material(ShaderLib.Lit) { color = new Color(0.97f, 0.97f, 0.95f) };
+            var ballMat = MakePitchMat(ShaderLib.Lit, new Color(0.97f, 0.97f, 0.95f));
             ballMat.SetFloat("_Smoothness", 0.7f);
             ballSphere.GetComponent<MeshRenderer>().sharedMaterial = ballMat;
             Destroy(ballSphere.GetComponent<Collider>());
             m.BallMesh = ballSphere.transform;
 
-            var bandMat = new Material(ShaderLib.Lit) { color = new Color(0.12f, 0.14f, 0.18f) };
+            var bandMat = MakePitchMat(ShaderLib.Lit, new Color(0.12f, 0.14f, 0.18f));
             for (int b = 0; b < 2; b++)
             {
                 var stripe = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -870,7 +880,7 @@ namespace Rise
             ringGo.name = "BallPossessionRing";
             ringGo.transform.SetParent(root, false);
             ringGo.transform.localScale = new Vector3(1.35f, 0.02f, 1.35f);
-            ringGo.GetComponent<MeshRenderer>().sharedMaterial = new Material(ShaderLib.Unlit) { color = new Color(0.16f, 0.92f, 0.52f, 0.85f) };
+            ringGo.GetComponent<MeshRenderer>().sharedMaterial = MakePitchMat(ShaderLib.Unlit, new Color(0.16f, 0.92f, 0.52f, 0.85f));
             Destroy(ringGo.GetComponent<Collider>());
             m.BallRing = ringGo.transform;
 
@@ -878,7 +888,7 @@ namespace Rise
             targetRingGo.name = "PassTargetRing";
             targetRingGo.transform.SetParent(root, false);
             targetRingGo.transform.localScale = new Vector3(1.45f, 0.018f, 1.45f);
-            targetRingGo.GetComponent<MeshRenderer>().sharedMaterial = new Material(ShaderLib.Unlit) { color = new Color(0.15f, 0.88f, 1.0f, 0.72f) };
+            targetRingGo.GetComponent<MeshRenderer>().sharedMaterial = MakePitchMat(ShaderLib.Unlit, new Color(0.15f, 0.88f, 1.0f, 0.72f));
             Destroy(targetRingGo.GetComponent<Collider>());
             targetRingGo.SetActive(false);
             m.TargetRing = targetRingGo.transform;
@@ -957,7 +967,9 @@ namespace Rise
             tm.anchor = TextAnchor.LowerCenter;
             tm.alignment = TextAlignment.Center;
             tm.color = isHome ? new Color(0.22f, 0.96f, 0.56f) : new Color(1.0f, 0.34f, 0.38f);
-            tm.text = $"▼ #{number} {pName}";
+            string labelNormal = $"▼ #{number} {pName}";
+            string labelBall = $"▼ ★ #{number} {pName}";
+            tm.text = labelNormal;
             if (font != null) labelGo.GetComponent<MeshRenderer>().sharedMaterial = font.material;
 
             return new Footballer
@@ -966,6 +978,8 @@ namespace Rise
                 Rig = rig,
                 Name = pName,
                 Role = role,
+                LabelNormal = labelNormal,
+                LabelBall = labelBall,
                 Number = number,
                 IsHome = isHome,
                 IsKeeper = isKeeper,
@@ -1130,6 +1144,7 @@ namespace Rise
 
             Player.SwingWeapon();
             UI.SoundSystem.I?.PlayKick();
+            Camera?.AddShake(greenTimed ? 0.24f : 0.14f);
             SetFootballCommentary(greenTimed
                 ? "GREEN TIMED FINISH! Curling strike bending into the top corner!"
                 : "Power strike unleashed towards the corner!");
@@ -1276,6 +1291,7 @@ namespace Rise
 
             UI.SoundSystem.I?.PlayWhistle();
             if (homeScored) UI.SoundSystem.I?.PlayCrowdCheer();
+            Camera?.AddShake(0.35f);
             State.Toast(m.GoalBannerText);
 
             ResetKickoffPositions(m, !homeScored);
@@ -1385,7 +1401,8 @@ namespace Rise
                     {
                         m.BallVel.x = -m.BallVel.x * 0.65f;
                         m.BallVel.z += Random.Range(-3.5f, 3.5f);
-                        UI.SoundSystem.I?.PlayKick(0.75f);
+                        UI.SoundSystem.I?.PlayWoodwork();
+                        Camera?.AddShake(0.32f);
                         SetFootballCommentary(hitBar ? "OFF THE CROSSBAR! So close!" : "OFF THE GOALPOST! Woodwork denies the goal!");
                     }
                 }
@@ -1443,7 +1460,11 @@ namespace Rise
                 {
                     p.MarkerText.transform.rotation = Quaternion.LookRotation(p.MarkerText.transform.position - cam.position, Vector3.up);
                     bool hasBall = m.BallCarrier == p;
-                    p.MarkerText.text = hasBall ? $"▼ ★ #{p.Number} {p.Name}" : $"▼ #{p.Number} {p.Name}";
+                    if (p.WasCarrier != hasBall)
+                    {
+                        p.WasCarrier = hasBall;
+                        p.MarkerText.text = hasBall ? p.LabelBall : p.LabelNormal;
+                    }
                 }
 
                 var pos = p.Root.position;
@@ -1633,6 +1654,9 @@ namespace Rise
             string savedWeapon = m.SavedWeapon;
 
             if (m.MatchPropsRoot != null) Destroy(m.MatchPropsRoot.gameObject);
+            for (int i = 0; i < m.CreatedMaterials.Count; i++)
+                if (m.CreatedMaterials[i] != null) Destroy(m.CreatedMaterials[i]);
+            m.CreatedMaterials.Clear();
             ActiveFootball = null;
 
             if (Player != null) Player.SetWeapon(savedWeapon);
