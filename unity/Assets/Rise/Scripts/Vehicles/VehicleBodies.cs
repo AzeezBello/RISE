@@ -61,13 +61,13 @@ namespace Rise.Vehicles
         // motorcycles, vans). A class with no model, or whose model fails to load, falls back to the procedural body.
         static readonly Dictionary<string, string[]> Models = new Dictionary<string, string[]>
         {
-            ["car"] = new[] { "sedan", "suv", "taxi", "hatchback-sports", "1997_nissan_200sx_s14", "2015_dodge_charger_srt_hellcat" },
-            ["luxury"] = new[] { "2015_mercedes-benz_s65_amg_coupe", "2018_audi_e-tron_gt_concept", "2026_ferrari_296_speciale_a", "2015_dodge_charger_srt_hellcat", "suv-luxury", "sedan-sports" },
-            ["police"] = new[] { "police", "uaz_469_un" }, ["lawma"] = new[] { "garbage-truck" }, ["fire"] = new[] { "firetruck" }, ["ambulance"] = new[] { "ambulance" },
-            ["delivery"] = new[] { "isuzu_cargo_base_truck", "delivery", "delivery-flat" }, ["truck"] = new[] { "tata_signa_cargo_truck", "truck", "truck-flat" },
+            ["car"] = new[] { "sedan", "suv", "taxi", "hatchback-sports" },
+            ["luxury"] = new[] { "suv-luxury", "sedan-sports" },
+            ["police"] = new[] { "police" }, ["lawma"] = new[] { "garbage-truck" }, ["fire"] = new[] { "firetruck" }, ["ambulance"] = new[] { "ambulance" },
+            ["delivery"] = new[] { "delivery", "delivery-flat" }, ["truck"] = new[] { "truck", "truck-flat" },
             ["danfo"] = new[] { "danfo_vanagon" }, ["keke"] = new[] { "keke_bajaj_re" }, ["korope"] = new[] { "suzuki_carry_minivan" }, ["okada"] = new[] { "suzuki_gsx-r750" },
-            ["brt"] = new[] { "volkswagen_crafter" }, ["army"] = new[] { "uaz_469_un", "2003-gmc-topkick-c6500" }, ["tanker"] = new[] { "fuel_truck", "heavy_commercial_vehicle_hcv" },
-            ["pickup"] = new[] { "dodge_ram_1500_rebel", "lightbody_90_md_pickup_-_low_poly_model" }, ["van"] = new[] { "van" },
+            ["brt"] = new[] { "volkswagen_crafter" }, ["army"] = new[] { "2003-gmc-topkick-c6500" }, ["tanker"] = new[] { "heavy_commercial_vehicle_hcv" },
+            ["pickup"] = new[] { "lightbody_90_md_pickup_-_low_poly_model" }, ["van"] = new[] { "van" },
             ["motorcycle"] = new[] { "2008_kawasaki_ninja_zx-10r-em", "suzuki_hayabusa_gsx-1300r-k8" },
         };
         // Extra yaw (degrees) to bring a model's native front onto +z. glTFast keeps glTF +Z as Unity +z, so most models need
@@ -128,9 +128,23 @@ namespace Rise.Vehicles
             bool tight = TightFit.Contains(name);
             var b = Measure(model, tight);
             if (b.size.x > b.size.z * 1.15f) { model.transform.localRotation = Quaternion.Euler(0f, 90f, 0f) * model.transform.localRotation; b = Measure(model, tight); }
-            // Scale to the class length, feet on the ground, centred on the axle line.
-            float k = b.size.z > 0.01f ? cls.len / b.size.z : 1f;
-            model.transform.localScale = Vector3.one * k;
+            // Scale to the class length, cap stylized roof height to human scale, feet on the ground, centred on the axle line.
+            float kz = b.size.z > 0.01f ? cls.len / b.size.z : 1f;
+            float kx = kz, ky = kz;
+            if (cls.id == "car" || cls.id == "luxury" || cls.id == "police")
+            {
+                bool suv = name.Contains("suv");
+                float maxH = suv ? 1.68f : 1.48f;
+                if (b.size.y * ky > maxH) ky = maxH / b.size.y;
+                if (b.size.x * kx > cls.wid * 1.04f) kx = (cls.wid * 1.04f) / b.size.x;
+            }
+            else if (cls.id == "van" || cls.id == "ambulance" || cls.id == "delivery")
+            {
+                float maxH = 2.05f;
+                if (b.size.y * ky > maxH) ky = maxH / b.size.y;
+                if (b.size.x * kx > cls.wid * 1.06f) kx = (cls.wid * 1.06f) / b.size.x;
+            }
+            model.transform.localScale = new Vector3(kx, ky, kz);
             b = Measure(model, tight);
             model.transform.localPosition = new Vector3(-(b.center.x - go.transform.position.x), -(b.min.y - go.transform.position.y), -(b.center.z - go.transform.position.z));
             b = Measure(model, tight);
@@ -545,10 +559,10 @@ namespace Rise.Vehicles
                 }
                 case "keke":
                 {
-                    // Keke Bajaj RE has an open doorway on both sides: seat the rider on the front bench and two passengers on the rear bench.
-                    BuildSeatedPerson(driverRoot, "Rider", new Vector3(0f, h * 0.32f, len * 0.12f), rng, isDriver: true, windowSide: 0, scale: 0.94f);
-                    BuildSeatedPerson(paxRoot, "PaxL", new Vector3(-wid * 0.17f, h * 0.34f, -len * 0.15f), rng, windowSide: -1, scale: 0.90f);
-                    BuildSeatedPerson(paxRoot, "PaxR", new Vector3(wid * 0.17f, h * 0.34f, -len * 0.15f), rng, windowSide: 1, scale: 0.90f);
+                    // Keep the rider and rear passengers tucked inside the Bajaj RE cabin canopy so they do not clip the roof/rear shell.
+                    BuildSeatedPerson(driverRoot, "Rider", new Vector3(0f, h * 0.22f, len * 0.10f), rng, isDriver: true, windowSide: 0, scale: 0.66f);
+                    BuildSeatedPerson(paxRoot, "PaxL", new Vector3(-wid * 0.12f, h * 0.22f, -len * 0.10f), rng, windowSide: 0, scale: 0.64f);
+                    BuildSeatedPerson(paxRoot, "PaxR", new Vector3(wid * 0.12f, h * 0.22f, -len * 0.10f), rng, windowSide: 0, scale: 0.64f);
                     break;
                 }
                 case "danfo":

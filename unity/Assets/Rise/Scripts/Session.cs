@@ -82,7 +82,7 @@ namespace Rise
             UpdateFamily(dt);
             UpdateStreet();
             UpdateCrew(dt);
-            if (Nav != null) { Nav.Target = ObjectivePosition; Nav.Tick(Focus.position); }
+            if (Nav != null) { Nav.Target = InInterior ? null : ObjectivePosition; Nav.Tick(Focus.position); }
             Contacts.SetArrow(!HasTask && MissionActive ? CurrentMission.Who : null);
 
             if (Working != null) { UpdateShift(dt); return; }

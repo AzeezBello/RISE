@@ -34,7 +34,19 @@ namespace Rise.UI
         void LateUpdate()
         {
             if (target == null || cam == null) return;
-            cam.transform.position = target.position + Vector3.up * 150f;
+            if (target.position.y > 100f)
+            {
+                // Indoor room mode: place camera just below the ceiling (y = 164.2) so the interior floorplan & stations render cleanly.
+                cam.orthographicSize = 11f;
+                cam.nearClipPlane = 0.2f;
+                cam.transform.position = new Vector3(target.position.x, 163.8f, target.position.z);
+            }
+            else
+            {
+                cam.orthographicSize = Size;
+                cam.nearClipPlane = 1f;
+                cam.transform.position = target.position + Vector3.up * 150f;
+            }
         }
     }
 }

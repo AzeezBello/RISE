@@ -298,24 +298,15 @@ namespace Rise
             RoomLabel("INDOOR MISSIONS & ACTIVITIES", rightPos + new Vector3(0f, 1.8f, 1.4f), new Color(1f, 0.78f, 0.22f));
             IndoorStations.Add(new IndoorStation { Id = "indoor_ops_board", Label = "Indoor Operations Board", Prompt = "INDOOR ACTIVITIES & MISSIONS MENU", LocalPos = rightPos + new Vector3(0f, 0f, 1.4f), OnInteract = OpenIndoorMenu });
 
-            if (!GameBootstrap.Mobile)
-            {
-                Entities.CharacterRig.InstantiateGlb("Models/Props/doors_window", "ExitDoorGlb", RoomCenter + new Vector3(0f, 0f, hd - 0.22f), new Vector3(1.8f, 2.3f, 0.28f), interiorRoot.transform, 0f, false);
-                Entities.CharacterRig.InstantiateGlb("Models/Props/air_conditioner", "IndoorAcGlb", RoomCenter + new Vector3(-hw + 0.35f, 3.1f, -1.8f), new Vector3(0.45f, 0.55f, 0.95f), interiorRoot.transform, 90f, false);
-                Entities.CharacterRig.InstantiateGlb("Models/Props/wood_furniture", "IndoorFurnitureGlb", RoomCenter + new Vector3(hw - 2.3f, 0.02f, -2.6f), new Vector3(2.2f, 1.15f, 1.6f), interiorRoot.transform, -90f, false);
-                Entities.CharacterRig.InstantiateGlb("Models/Props/newspaper_stack", "IndoorNewspapersGlb", RoomCenter + new Vector3(1.4f, home ? 0.96f : 1.12f, -2.2f), new Vector3(0.42f, 0.32f, 0.35f), interiorRoot.transform, 18f, false);
-                if (home || kind == "gym" || kind == "mall")
-                    Entities.CharacterRig.InstantiateGlb("Models/Props/football_shirt", "FramedJerseyGlb", RoomCenter + new Vector3(hw - 0.35f, 1.85f, -0.6f), new Vector3(0.45f, 0.90f, 0.80f), interiorRoot.transform, -90f, false);
-            }
-
             var lightGo = new GameObject("RoomLight"); lightGo.transform.SetParent(interiorRoot.transform, false);
             lightGo.transform.position = RoomCenter + new Vector3(0f, 3.6f, 0f);
             var l = lightGo.AddComponent<Light>(); l.type = LightType.Point; l.range = 28f; l.intensity = 2.1f; l.color = new Color(1f, 0.94f, 0.82f);
 
             Physics.SyncTransforms();
             ActiveMenu = null;
-            Player.Teleport(RoomCenter + new Vector3(0f, 0.25f, hd - 2f), 180f);
-            if (Camera != null) { Camera.SetIndoor(true); Camera.Yaw = 180f; }
+            Player.MinFloorY = RoomCenter.y;
+            Player.Teleport(RoomCenter + new Vector3(0f, 0.05f, hd - 2f), 180f);
+            if (Camera != null) { Camera.Yaw = 180f; Camera.SetIndoor(true); }
             State.Toast($"Inside {name}");
             return true;
         }
@@ -331,8 +322,9 @@ namespace Rise
             IndoorStations.Clear();
             Destroy(interiorRoot);
             interiorRoot = null;
+            Player.MinFloorY = null;
             Player.Teleport(interiorOutdoorPos, interiorOutdoorYaw);
-            if (Camera != null) { Camera.SetIndoor(false); Camera.Yaw = interiorOutdoorYaw; }
+            if (Camera != null) { Camera.Yaw = interiorOutdoorYaw; Camera.SetIndoor(false); }
             State.Toast("Back on the street");
         }
 
@@ -509,11 +501,13 @@ namespace Rise
             if (GameInput.AttackPressed) { PerformStreetAttack(); return true; }
 
             float hd = interiorKind == "home" ? 6f : 8f;
+            Player.MinFloorY = RoomCenter.y;
             var pos = Player.transform.position;
-            if (pos.y < RoomCenter.y - 1.5f || Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(RoomCenter.x, RoomCenter.z)) > 15f)
+            if (pos.y < RoomCenter.y - 0.1f || Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(RoomCenter.x, RoomCenter.z)) > 15f)
             {
                 Physics.SyncTransforms();
-                Player.Teleport(RoomCenter + new Vector3(0f, 0.25f, hd - 2f), 180f);
+                Player.Teleport(RoomCenter + new Vector3(0f, 0.05f, hd - 2f), 180f);
+                Camera?.Snap();
                 pos = Player.transform.position;
             }
             float dDoor = Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(RoomCenter.x, RoomCenter.z + hd - 0.4f));

@@ -55,9 +55,20 @@ namespace Rise.World
                 var cls = data.VehicleClass(Mix[rng.Next(Mix.Length)]) ?? data.VehicleClass("car");
                 if (cls == null) break;
                 var v = new Vehicle { cls = cls, road = road, dir = rng.NextDouble() < 0.5 ? -1 : 1, lane = road.width >= 30f && rng.NextDouble() < 0.5 ? 1 : 0 };
+                float minClear = cls.len + 5f;
                 v.along = Mathf.Lerp(road.from + 6f, road.to - 6f, (float)rng.NextDouble());
+                for (int attempt = 0; attempt < 16 && !IsLaneClear(v.road, v.dir, v.lane, v.along, minClear); attempt++)
+                {
+                    if (attempt >= 8)
+                    {
+                        v.road = data.roads[rng.Next(data.roads.Length)];
+                        v.dir = rng.NextDouble() < 0.5 ? -1 : 1;
+                        v.lane = v.road.width >= 30f && rng.NextDouble() < 0.5 ? 1 : 0;
+                    }
+                    v.along = Mathf.Lerp(v.road.from + 6f, v.road.to - 6f, (float)rng.NextDouble());
+                }
                 v.t = VehicleBodies.Build(cls, root, rng, out v.wheels).transform;
-                v.cruise = Mathf.Min(cls.max, BaseSpeed * road.speed) * (0.85f + 0.3f * (float)rng.NextDouble());
+                v.cruise = Mathf.Min(cls.max, BaseSpeed * v.road.speed) * (0.85f + 0.3f * (float)rng.NextDouble());
                 v.speed = v.cruise;
                 vehicles.Add(v);
                 Place(v);
@@ -153,8 +164,13 @@ namespace Rise.World
                     if (o.road == v.road)
                     {
                         if (o.dir != v.dir || o.lane != v.lane) continue;
-                        float d = (o.along - v.along) * v.dir - (o.cls.len - v.cls.len) * 0.5f;
-                        if (d > 0f && d < gap) { gap = d; aheadSpeed = o.speed; }
+                        float rawD = (o.along - v.along) * v.dir;
+                        float d = rawD - (o.cls.len + v.cls.len) * 0.5f;
+                        if (rawD > 0f || (rawD > -2.5f && i > j))
+                        {
+                            float effGap = Mathf.Max(0.1f, d);
+                            if (effGap < gap) { gap = effGap; aheadSpeed = rawD > 0f ? o.speed : 0f; }
+                        }
                     }
                     else if (o.t != null && Mathf.Abs(o.t.position.y - v.t.position.y) < 2.5f)
                     {
@@ -250,6 +266,18 @@ namespace Rise.World
             v.t.rotation = Quaternion.LookRotation(slopeFwd, Vector3.up);
         }
 
+        bool IsLaneClear(RoadData r, int dir, int lane, float along, float minClearance, Vehicle ignore = null)
+        {
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                var o = vehicles[i];
+                if (o == ignore || o.road != r || o.dir != dir || o.lane != lane) continue;
+                float need = Mathf.Max(minClearance, (o.cls != null ? o.cls.len : 5f) * 0.5f + minClearance * 0.5f + 3f);
+                if (Mathf.Abs(o.along - along) < need) return false;
+            }
+            return true;
+        }
+
         void TryRelocateNearPlayer(Vehicle v, Vector3 pPos, int seed)
         {
             if (data == null || data.roads.Length == 0) return;
@@ -261,12 +289,14 @@ namespace Rise.World
                 if (r.Length < 28f) continue;
                 float pAlong = Mathf.Clamp(r.Along(pPos), r.from + 8f, r.to - 8f);
                 float candidateAlong = Mathf.Clamp(pAlong + ((seed + a) % 2 == 0 ? 110f : -110f), r.from + 8f, r.to - 8f);
+                int candidateLane = r.width >= 30f && (seed % 2 == 1) ? 1 : 0;
+                if (!IsLaneClear(r, v.dir, candidateLane, candidateAlong, (v.cls != null ? v.cls.len : 5f) + 6f, v)) continue;
                 var pt = r.Point(candidateAlong, r.k);
                 float dSq = (pt - pPos).sqrMagnitude;
                 if (dSq < 65f * 65f || dSq > 280f * 280f) continue;
                 v.road = r;
                 v.along = candidateAlong;
-                v.lane = r.width >= 30f && (seed % 2 == 1) ? 1 : 0;
+                v.lane = candidateLane;
                 v.cruise = Mathf.Min(v.cls.max, BaseSpeed * r.speed);
                 v.speed = v.cruise * 0.8f;
                 return;

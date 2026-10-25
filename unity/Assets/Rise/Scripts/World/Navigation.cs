@@ -99,16 +99,29 @@ namespace Rise.World
 
         List<Node> Key(string axis, float k) { var key = axis + ":" + k; if (!onRoad.TryGetValue(key, out var l)) onRoad[key] = l = new List<Node>(); return l; }
 
-        // Nearest road to a data point, with the snapped point on it.
-        bool Snap(float x, float z, out RoadData road, out float sx, out float sz, out float d)
+        // Nearest road to a world point (preferring the carriageway and elevation the point sits on, e.g. bridge ramps).
+        bool Snap(Vector3 w, out RoadData road, out float sx, out float sz, out float d)
         {
+            float x = w.x, z = WorldData.DataZ(w.z);
             road = null; sx = x; sz = z; d = float.MaxValue;
+            float bestScore = float.MaxValue;
             foreach (var r in data.roads)
             {
                 float along = r.Horizontal ? x : z, across = r.Horizontal ? z : x;
                 if (along < r.from - 20f || along > r.to + 20f) continue;
+                float a = Mathf.Clamp(along, r.from, r.to);
                 float dd = Mathf.Abs(across - r.k);
-                if (dd < d) { d = dd; road = r; float a = Mathf.Clamp(along, r.from, r.to); sx = r.Horizontal ? a : r.k; sz = r.Horizontal ? r.k : a; }
+                float outside = Mathf.Max(0f, dd - r.width * 0.5f);
+                float dy = Mathf.Abs(w.y - data.RoadHeightAt(r, a));
+                float score = outside + dd * 0.35f + dy * 3.5f;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    d = dd;
+                    road = r;
+                    sx = r.Horizontal ? a : r.k;
+                    sz = r.Horizontal ? r.k : a;
+                }
             }
             return road != null;
         }
@@ -118,7 +131,7 @@ namespace Rise.World
         {
             float ax = fromW.x, az = WorldData.DataZ(fromW.z), bx = toW.x, bz = WorldData.DataZ(toW.z);
             var pts = new List<Vector2> { new Vector2(ax, az) };
-            if (!Snap(ax, az, out var A, out float asx, out float asz, out float ad) || !Snap(bx, bz, out var B, out float bsx, out float bsz, out float bd)) { pts.Add(new Vector2(bx, bz)); return ToWorld(pts); }
+            if (!Snap(fromW, out var A, out float asx, out float asz, out float ad) || !Snap(toW, out var B, out float bsx, out float bsz, out float bd)) { pts.Add(new Vector2(bx, bz)); return ToWorld(pts, null, null); }
             if (ad > 3f) pts.Add(new Vector2(asx, asz));
             if (!(A == B))
             {
@@ -131,10 +144,10 @@ namespace Rise.World
             pts.Add(new Vector2(bx, bz));
             var clean = new List<Vector2>();
             foreach (var p in pts) if (clean.Count == 0 || (p - clean[clean.Count - 1]).magnitude > 0.5f) clean.Add(p);
-            return ToWorld(clean);
+            return ToWorld(clean, A, B);
         }
 
-        float SegmentHeight(Vector2 a, Vector2 b, Vector2 p)
+        float SegmentHeight(Vector2 a, Vector2 b, Vector2 p, RoadData fallbackRoad = null)
         {
             if (Mathf.Approximately(a.y, b.y) && !Mathf.Approximately(a.x, b.x))
             {
@@ -146,14 +159,17 @@ namespace Rise.World
                 var r = data.FindRoad("v", a.x);
                 if (r != null) return data.RoadHeightAt(r, p.y);
             }
+            if (fallbackRoad != null)
+                return data.RoadHeightAt(fallbackRoad, fallbackRoad.Horizontal ? p.x : p.y);
             return data.DeckHeightAtData(p.x, p.y);
         }
 
-        List<Vector3> ToWorld(List<Vector2> pts)
+        List<Vector3> ToWorld(List<Vector2> pts, RoadData startRoad, RoadData endRoad)
         {
             var w = new List<Vector3>(pts.Count * 2);
             for (int i = 0; i < pts.Count; i++)
             {
+                RoadData segRoad = i <= 1 ? startRoad : (i == pts.Count - 1 ? endRoad : null);
                 if (i > 0)
                 {
                     var a = pts[i - 1]; var b = pts[i];
@@ -162,10 +178,10 @@ namespace Rise.World
                     for (int s = 1; s <= steps; s++)
                     {
                         var p = Vector2.Lerp(a, b, (float)s / (steps + 1));
-                        var sv = WorldData.W(p.x, 0f, p.y); sv.y = SegmentHeight(a, b, p) + 0.16f; w.Add(sv);
+                        var sv = WorldData.W(p.x, 0f, p.y); sv.y = SegmentHeight(a, b, p, segRoad) + 0.16f; w.Add(sv);
                     }
                 }
-                float h = i > 0 ? SegmentHeight(pts[i - 1], pts[i], pts[i]) : data.DeckHeightAtData(pts[i].x, pts[i].y);
+                float h = i > 0 ? SegmentHeight(pts[i - 1], pts[i], pts[i], segRoad) : (startRoad != null ? data.RoadHeightAt(startRoad, startRoad.Horizontal ? pts[i].x : pts[i].y) : data.DeckHeightAtData(pts[i].x, pts[i].y));
                 var v = WorldData.W(pts[i].x, 0f, pts[i].y); v.y = h + 0.16f; w.Add(v);
             }
             return w;

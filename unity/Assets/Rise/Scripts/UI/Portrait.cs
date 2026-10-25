@@ -17,10 +17,16 @@ namespace Rise.UI
             Texture = new RenderTexture(160, 160, 16) { name = "Portrait" };
             var go = new GameObject("Portrait Camera"); go.transform.SetParent(transform, false);
             cam = go.AddComponent<Camera>();
-            cam.fieldOfView = 24f; cam.nearClipPlane = 0.05f; cam.farClipPlane = 3f;
+            cam.fieldOfView = 24f; cam.nearClipPlane = 0.05f; cam.farClipPlane = 2.2f;
+            cam.cullingMask = 1 << Player.PlayerController.Layer;
             cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.08f, 0.09f, 0.12f);
             cam.targetTexture = Texture; cam.depth = -9; cam.allowHDR = false;
             var urp = cam.GetUniversalAdditionalCameraData(); urp.renderPostProcessing = false; urp.renderShadows = false; urp.antialiasing = AntialiasingMode.None;
+            var fill = go.AddComponent<Light>();
+            fill.type = LightType.Point; fill.range = 2.4f; fill.intensity = 1.15f;
+            fill.color = new Color(1.0f, 0.95f, 0.88f);
+            fill.cullingMask = 1 << Player.PlayerController.Layer;
+            fill.shadows = LightShadows.None;
         }
 
         void LateUpdate()

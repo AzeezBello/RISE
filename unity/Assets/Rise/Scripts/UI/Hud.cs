@@ -521,6 +521,7 @@ namespace Rise.UI
         void DrawCentre(float s, float W, float H, SaveData st, bool touch)
         {
             float bw = 300f * s, gap = 12f * s, half = (bw - gap) * 0.5f, x0 = W * 0.5f - bw * 0.5f, by = H - 22f * s;
+            Box(new Rect(x0 - 10f * s, by - 20f * s, bw + 20f * s, 32f * s), panel, new Color(1f, 1f, 1f, 0.88f));
             Label(new Rect(x0, by - 16f * s, half, 14f * s), "HEALTH", overline); Label(new Rect(x0, by - 16f * s, half, 14f * s), $"{st.health:0}", smallRight);
             Bar(new Rect(x0, by, half, 6f * s), st.health / 100f, st.health < 25f ? Red : Hex(0xE5484D));
             float x1 = x0 + half + gap;
@@ -531,7 +532,10 @@ namespace Rise.UI
             bool free = session.ActiveMenu == null && session.Working == null;
             if (st.armor > 0f)
             {
-                Pill(x0, slotBottom - 20f * s, $"KEVLAR ARMOR {st.armor:0}%", Blue, s);
+                string aLabel = $"KEVLAR ARMOR {st.armor:0}%";
+                float aw = TW(pillText, aLabel) + 14f * s, ax = W * 0.5f - aw * 0.5f, ay = slotBottom - 20f * s;
+                Box(new Rect(ax, ay, aw, 18f * s), rPill, A(Ink, 0.88f));
+                Pill(ax, ay, aLabel, Blue, s);
                 slotBottom -= 24f * s;
                 py = slotBottom - ph;
             }
@@ -541,7 +545,9 @@ namespace Rise.UI
                 string wLabel = isGun
                     ? $"{session.EquippedWeaponName.ToUpperInvariant()}  ·  {st.ammo} AMMO  ·  {(touch ? "FIGHT SHOOT · ITEM SWITCH" : "F / CLICK SHOOT · Q SWITCH")}"
                     : $"{session.EquippedWeaponName.ToUpperInvariant()}  ·  {(touch ? "FIGHT / ITEM" : "F FIGHT · Q SWITCH")}";
-                Pill(x0, slotBottom - 20f * s, wLabel, isGun ? Red : Gold, s);
+                float ww = TW(pillText, wLabel) + 14f * s, wx = W * 0.5f - ww * 0.5f, wy = slotBottom - 20f * s;
+                Box(new Rect(wx, wy, ww, 18f * s), rPill, A(Ink, 0.88f));
+                Pill(wx, wy, wLabel, isGun ? Red : Gold, s);
                 slotBottom -= 24f * s;
                 py = slotBottom - ph;
 

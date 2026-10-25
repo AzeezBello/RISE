@@ -373,7 +373,7 @@ async function runTarget(t) {
         executeMethod: 'Rise.EditorTools.PlayTest.Run',
         quit: false,
         nographics: true,
-        expectPattern: /ALL \d+ CHECKS PASSED/,
+        expectPattern: /RISE play test: PASS \(\d+ checks|ALL \d+ CHECKS PASSED/,
       });
       break;
     }

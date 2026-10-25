@@ -631,6 +631,9 @@ namespace Rise.Entities
             var hairMat = new Material(ShaderLib.Lit) { name = "HairMat", color = new Color(0.08f, 0.06f, 0.05f) };
             hairMat.SetFloat("_Smoothness", 0.22f);
             rig.Hair.Add(hairMat);
+            var beardMat = new Material(ShaderLib.Lit) { name = "BeardMat", color = new Color(0.08f, 0.06f, 0.05f) };
+            beardMat.SetFloat("_Smoothness", 0.22f);
+            rig.Hair.Add(beardMat);
 
             var capMat = new Material(ShaderLib.Lit) { name = "HeadwearCapMat", color = new Color(0.12f, 0.23f, 0.37f) };
             capMat.SetFloat("_Smoothness", 0.32f);
@@ -733,7 +736,7 @@ namespace Rise.Entities
                 // ---- Sculpted 3D Facial Hair on Head (Beard, Goatee, Moustache) ----
                 void AddBeardPart(Transform group, string n, PrimitiveType pt, Vector3 pos, Vector3 sc, Quaternion? rot = null)
                 {
-                    var t = SubPart(group, n, pt, pos, sc, hairMat, rot);
+                    var t = SubPart(group, n, pt, pos, sc, beardMat, rot);
                     rig.BeardRenderers.Add(t.GetComponent<Renderer>());
                 }
 

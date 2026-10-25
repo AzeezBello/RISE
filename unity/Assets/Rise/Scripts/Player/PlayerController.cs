@@ -12,6 +12,7 @@ namespace Rise.Player
         public Transform CameraTransform;
         public bool InputEnabled = true, CanSprint = true;
         [System.NonSerialized] public bool Swimming;   // set by the session when in water off a bridge deck: slow, no sprint or jump, body low
+        [System.NonSerialized] public float? MinFloorY;
         public const float SwimSpeed = 1.9f;
         public const int Layer = 8;
 
@@ -207,6 +208,13 @@ namespace Rise.Player
                 combatLunge = transform.forward * (1.75f * Mathf.Sin(swing01 * Mathf.PI));
             }
             cc.Move((horizontal + combatLunge + Vector3.up * velocity.y) * Time.deltaTime);
+            if (MinFloorY.HasValue && transform.position.y < MinFloorY.Value)
+            {
+                bool en = cc.enabled; cc.enabled = false;
+                var p = transform.position; p.y = MinFloorY.Value; transform.position = p;
+                cc.enabled = en;
+                if (velocity.y < 0f) velocity.y = -2f;
+            }
 
             // Locomotion & action state → clip (idle, walk, run, jump, turn, enter_vehicle, exit_vehicle, attack cross-fades).
             if (vehicleAnimT > 0f)

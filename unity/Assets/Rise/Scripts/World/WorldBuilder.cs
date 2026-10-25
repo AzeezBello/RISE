@@ -294,7 +294,8 @@ namespace Rise.World
                         Box("Pavement", r.Point(mid, across, 0.15f), h ? new Vector3(len, 0.3f, 3.2f) : new Vector3(3.2f, 0.3f, len), pavement, group);
                     }
                 }
-                foreach (var span in Split(r.from, r.to, baseCuts))
+                var medianCuts = Merge(CrossingGaps(r, 7.5f), bridgeCuts);
+                foreach (var span in Split(r.from, r.to, medianCuts))
                 {
                     float len = span.y - span.x, mid = (span.x + span.y) * 0.5f;
                     // Centre line (or median) between the carriageways.
@@ -507,14 +508,11 @@ namespace Rise.World
                         Box("Banana Arch Top", pos + new Vector3(0f, 5.0f, 8.0f), new Vector3(7.8f, 0.9f, 1.2f), goldMat, group);
 
                         // Main contemporary mansion + cantilevered glass upper deck
-                        if (!GameBootstrap.Mobile && PlaceGlb("Models/Landmarks/hills_estate", l.name + " villa glb", pos + new Vector3(-1.2f, 0f, -0.8f), new Vector3(11.5f, 11.2f, 9.2f), group) == null)
-                        {
-                            Box(l.name + " ground", pos + new Vector3(-1.8f, 2.4f, -0.8f), new Vector3(11.5f, 4.8f, 9.2f), whiteVilla, group);
-                            Box(l.name + " second", pos + new Vector3(-1.2f, 6.8f, -0.8f), new Vector3(10.0f, 4.2f, 8.0f), whiteVilla, group);
-                            Box(l.name + " penthouse", pos + new Vector3(-0.6f, 10.6f, -0.8f), new Vector3(7.8f, 3.4f, 6.4f), glassVilla, group);
-                            Box(l.name + " terrace", pos + new Vector3(-1.2f, 4.9f, 3.6f), new Vector3(10.4f, 0.35f, 2.2f), teak, group, false);
-                            Box(l.name + " glass front", pos + new Vector3(-1.2f, 6.8f, 3.3f), new Vector3(9.0f, 3.4f, 0.25f), glassVilla, group, false);
-                        }
+                        Box(l.name + " ground", pos + new Vector3(-1.8f, 2.4f, -0.8f), new Vector3(11.5f, 4.8f, 9.2f), whiteVilla, group);
+                        Box(l.name + " second", pos + new Vector3(-1.2f, 6.8f, -0.8f), new Vector3(10.0f, 4.2f, 8.0f), whiteVilla, group);
+                        Box(l.name + " penthouse", pos + new Vector3(-0.6f, 10.6f, -0.8f), new Vector3(7.8f, 3.4f, 6.4f), glassVilla, group);
+                        Box(l.name + " terrace", pos + new Vector3(-1.2f, 4.9f, 3.6f), new Vector3(10.4f, 0.35f, 2.2f), teak, group, false);
+                        Box(l.name + " glass front", pos + new Vector3(-1.2f, 6.8f, 3.3f), new Vector3(9.0f, 3.4f, 0.25f), glassVilla, group, false);
 
                         // Turquoise infinity swimming pool & deck
                         Box("Infinity pool surround", pos + new Vector3(5.8f, 0.22f, 1.2f), new Vector3(4.6f, 0.44f, 8.2f), teak, group);
@@ -581,18 +579,8 @@ namespace Rise.World
                 }
                 var fp = Footprint(l);
                 float h = Mathf.Max(3f, l.h);
-                string lmGlb = l.kind switch
-                {
-                    "warehouse" => "Models/Landmarks/old_factory",
-                    "police" => "Models/Landmarks/court_hall",
-                    "museum" => "Models/Landmarks/heritage_house",
-                    _ => null
-                };
-                if (GameBootstrap.Mobile || lmGlb == null || PlaceGlb(lmGlb, l.name + " glb", pos, new Vector3(fp.x, h, fp.y), group) == null)
-                {
-                    Box(l.name, pos + Vector3.up * h * 0.5f, new Vector3(fp.x, h, fp.y), body, group);
-                    Box(l.name + " parapet", pos + Vector3.up * (h + 0.3f), new Vector3(fp.x + 0.6f, 0.6f, fp.y + 0.6f), Mat("parapet", "#6b655a"), group, false);
-                }
+                Box(l.name, pos + Vector3.up * h * 0.5f, new Vector3(fp.x, h, fp.y), body, group);
+                Box(l.name + " parapet", pos + Vector3.up * (h + 0.3f), new Vector3(fp.x + 0.6f, 0.6f, fp.y + 0.6f), Mat("parapet", "#6b655a"), group, false);
                 // Sign board on the street-facing side (north: data -z, world +z).
                 var signPos = pos + new Vector3(0, h + 1.3f, fp.y * 0.5f + 0.2f);
                 Box(l.name + " board", signPos, new Vector3(Mathf.Min(fp.x * 0.9f, 2.2f + l.shortName.Length * 1.05f), 1.8f, 0.25f), Mat("board", "#1b1b1f"), group, false);
@@ -643,14 +631,14 @@ namespace Rise.World
             return true;
         }
 
-        // Trees: tropical, maple and pine models in the Surulere plot interiors
+        // Trees: tropical and pine models in the Surulere plot interiors
         // and along the Eko Atlantic shore, height-fitted with a little jitter, kept off the road shoulders.
         void BuildVegetation()
         {
             var group = new GameObject("Vegetation").transform; group.SetParent(Root, false);
             var plan = GameBootstrap.Mobile
                 ? new (string model, int count, float height)[] { ("jabami_anime_tree-grass_v1", 10, 6f), ("tree_spruce_pine", 4, 7f) }
-                : new (string model, int count, float height)[] { ("jabami_anime_tree-grass_v1", 18, 6f), ("maple_tree", 8, 5.5f), ("tree_spruce_pine", 5, 7f) };
+                : new (string model, int count, float height)[] { ("jabami_anime_tree-grass_v1", 22, 6f), ("tree_spruce_pine", 9, 7f) };
             var zones = new (float x0, float x1, float z0, float z1)[] { (-120, -22, -120, -22), (22, 120, -120, -22), (-120, -22, 22, 120), (22, 120, 22, 120), (346, 614, 315, 330) };
             var rng = new System.Random(42);
             foreach (var (model, count, height) in plan)
@@ -684,20 +672,6 @@ namespace Rise.World
                         var trunk = tree.AddComponent<BoxCollider>(); trunk.center = tree.transform.InverseTransformPoint(new Vector3(pos.x, pos.y + height * 0.5f, pos.z)); trunk.size = new Vector3(0.6f / k, height / k, 0.6f / k);
                         Trees++; ObjectCount++; placed = true;
                     }
-                }
-            }
-
-            if (!GameBootstrap.Mobile)
-            {
-                var groundCover = new GameObject("Ground cover").transform; groundCover.SetParent(Root, false);
-                string[] grassModels = { "Models/Vegetation/game_ready_grass", "Models/Vegetation/mud_grassland" };
-                for (int i = 0; i < 16; i++)
-                {
-                    var z = zones[rng.Next(zones.Length)];
-                    float dx = Mathf.Lerp(z.x0 + 3f, z.x1 - 3f, (float)rng.NextDouble()), dz = Mathf.Lerp(z.z0 + 3f, z.z1 - 3f, (float)rng.NextDouble());
-                    if (Data.InWaterData(dx, dz) || NearRoadData(dx, dz, 7f) || ReservedData(dx, dz)) continue;
-                    var pos = WorldData.W(dx, Data.DeckHeightAtData(dx, dz), dz);
-                    PlaceGlb(grassModels[i % grassModels.Length], "GrassPatch " + i, pos, new Vector3(2.8f, 0.7f, 2.8f), groundCover, (float)rng.NextDouble() * 360f, false);
                 }
             }
         }
@@ -790,12 +764,9 @@ namespace Rise.World
 
             // Corner Watchtower
             var wtPos = pos + new Vector3(-11.2f, 0f, 8.2f);
-            if (GameBootstrap.Mobile || PlaceGlb("Models/Landmarks/wooden_watchtower", "Watchtower glb", wtPos, new Vector3(3.4f, 8.4f, 3.4f), group) == null)
-            {
-                Box("Watchtower legs", wtPos + Vector3.up * 3.2f, new Vector3(2.2f, 6.4f, 2.2f), mainMat, group);
-                Box("Watchtower cab", wtPos + Vector3.up * 7.1f, new Vector3(2.8f, 1.6f, 2.8f), trimMat, group, false);
-                Box("Watchtower roof", wtPos + Vector3.up * 8.1f, new Vector3(3.3f, 0.35f, 3.3f), roofMat, group, false);
-            }
+            Box("Watchtower legs", wtPos + Vector3.up * 3.2f, new Vector3(2.2f, 6.4f, 2.2f), mainMat, group);
+            Box("Watchtower cab", wtPos + Vector3.up * 7.1f, new Vector3(2.8f, 1.6f, 2.8f), trimMat, group, false);
+            Box("Watchtower roof", wtPos + Vector3.up * 8.1f, new Vector3(3.3f, 0.35f, 3.3f), roofMat, group, false);
 
             // Flagpole with Nigerian Green-White-Green / Naval flag
             var flagPos = pos + new Vector3(-4.8f, 0f, 4.2f);
@@ -1051,8 +1022,6 @@ namespace Rise.World
                 var basePos = new Vector3(x, 0.15f, z);
                 Box("Stall", basePos + Vector3.up * 0.5f, new Vector3(2.4f, 1f, 1.4f), Mat("stall", "#7a5a3a"), group);
                 Box("Tarp", basePos + Vector3.up * 2.3f, new Vector3(3f, 0.1f, 2.2f), Mat("tarp" + i % tarps.Length, tarps[i % tarps.Length]), group, false);
-                if (!GameBootstrap.Mobile && i % 2 == 0)
-                    PlaceGlb("Models/Props/football_shirt", "JerseyRack " + i, basePos + new Vector3(0f, 1.15f, 0.55f), new Vector3(0.75f, 0.88f, 0.4f), group, 0f, false);
             }
             var binPos = pos + new Vector3(fp.x * 0.5f + 2.2f, 0.15f, -fp.y * 0.5f);
             if (!NearRoadData(binPos.x, -binPos.z, 4.5f)) BuildLawmaBin(binPos, group, true);
@@ -1125,8 +1094,8 @@ namespace Rise.World
                 else Box("Parapet", pos + Vector3.up * (h + 0.25f), new Vector3(13.6f, 0.5f, 10.6f), Mat("parapet", "#6b655a"), group, false);
                 if (!GameBootstrap.Mobile)
                 {
-                    PlaceGlb("Models/Props/air_conditioner", "AC unit glb", pos + new Vector3(-4.2f, 2.2f, 5.2f), new Vector3(0.9f, 0.65f, 0.45f), group, 0f, false);
-                    PlaceGlb("Models/Props/doors_window", "Front door glb", pos + new Vector3(0f, 0f, 5.15f), new Vector3(2.4f, 2.3f, 0.35f), group, 0f, false);
+                    Box("AC unit", pos + new Vector3(-4.2f, 2.4f, 5.18f), new Vector3(0.85f, 0.55f, 0.35f), Mat("ac-unit", "#d8dce0"), group, false);
+                    Box("Front door", pos + new Vector3(0f, 1.15f, 5.08f), new Vector3(1.5f, 2.3f, 0.16f), Mat("door-wood", "#4a3222"), group, false);
                 }
                 if (!string.IsNullOrEmpty(p.sign)) Sign(p.sign, pos + new Vector3(0, 2.6f, 10.6f), "#ffffff", 0.6f, group);
             }
@@ -1402,12 +1371,22 @@ namespace Rise.World
                 var r = Data.FindRoad(f.axis, f.k); if (r == null) continue;
                 bool h = r.Horizontal;
                 float span = r.width + 10f;
-                Box("Span", r.Point(f.at, r.k, 6.2f), h ? new Vector3(3f, 0.4f, span) : new Vector3(span, 0.4f, 3f), steel, group);
+                float at = f.at;
+                var crossGaps = CrossingGaps(r, 14f);
+                foreach (var g in crossGaps)
+                {
+                    if (at > g.x && at < g.y)
+                    {
+                        float mid = (g.x + g.y) * 0.5f;
+                        at = at >= mid ? g.y + 4f : g.x - 4f;
+                    }
+                }
+                Box("Span", r.Point(at, r.k, 6.2f), h ? new Vector3(3f, 0.4f, span) : new Vector3(span, 0.4f, 3f), steel, group);
                 for (int s = -1; s <= 1; s += 2)
                 {
                     float across = r.k + s * (span * 0.5f - 1f);
-                    Box("Tower", r.Point(f.at, across, 3.1f), new Vector3(2.6f, 6.2f, 2.6f), steel, group);
-                    Box("Rail", r.Point(f.at + 1.5f * (h ? 1 : 0), r.k + (h ? 0 : 1.5f), 7.0f), h ? new Vector3(0.1f, 1.2f, span) : new Vector3(span, 1.2f, 0.1f), steel, group, false);
+                    Box("Tower", r.Point(at, across, 3.1f), new Vector3(2.6f, 6.2f, 2.6f), steel, group);
+                    Box("Rail", r.Point(at + s * 1.4f, r.k, 7.0f), h ? new Vector3(0.1f, 1.2f, span) : new Vector3(span, 1.2f, 0.1f), steel, group, false);
                 }
             }
         }
@@ -1435,16 +1414,12 @@ namespace Rise.World
                 Box("Kiosk", pos + Vector3.up * 1.3f, new Vector3(2.6f, 2.6f, 2.2f), Mat("kiosk", "#2e7d32"), group);
                 Sign("POS", pos + new Vector3(0, 3.1f, 0), "#ffffff", 0.6f, group);
                 BuildLawmaBin(pos + new Vector3(1.9f, 0f, 0f), group, false);
-                if (!GameBootstrap.Mobile)
-                    PlaceGlb("Models/Props/newspaper_stack", "Newspapers", pos + new Vector3(-0.85f, 0f, 1.25f), new Vector3(0.55f, 0.45f, 0.45f), group, 0f, false);
             }
             foreach (var v in Data.vendors)
             {
                 var pos = v.World(0.3f);
                 Box("Table", pos + Vector3.up * 0.5f, new Vector3(2f, 0.9f, 1.2f), Mat("stall", "#7a5a3a"), group);
                 Box("Umbrella", pos + Vector3.up * 2.4f, new Vector3(2.6f, 0.12f, 2.6f), Mat("umbrella", "#d9534f"), group, false);
-                if (!GameBootstrap.Mobile)
-                    PlaceGlb("Models/Props/newspaper_stack", "VendorStack", pos + new Vector3(0.55f, 0.95f, 0f), new Vector3(0.45f, 0.35f, 0.35f), group, 15f, false);
             }
             if (Data.TryPlace("lawma", out var lawmaDepot))
             {

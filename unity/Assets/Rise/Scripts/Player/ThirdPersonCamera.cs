@@ -36,6 +36,21 @@ namespace Rise.Player
                 targetDistance = indoor ? 4.4f : 6.8f;
                 targetHeight = indoor ? 1.55f : 1.9f;
             }
+            Snap();
+        }
+
+        public void Snap()
+        {
+            if (Target == null) return;
+            Distance = currentDistance = targetDistance;
+            Height = targetHeight;
+            posVelocity = Vector3.zero;
+            var pivot = Target.position + Vector3.up * Height;
+            var rot = Quaternion.Euler(Pitch, Yaw, 0f);
+            transform.position = pivot + (rot * Vector3.back) * currentDistance;
+            lookPoint = pivot;
+            lookPointReady = true;
+            transform.rotation = Quaternion.LookRotation(lookPoint - transform.position, Vector3.up);
         }
 
         public void SetDriving(Transform vehicleTransform)
