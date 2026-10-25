@@ -405,10 +405,11 @@ namespace Rise
         void OpenVehicleMenu(Vehicles.VehicleController v, OwnedVehicle o)
         {
             int price = 0; foreach (var d in Data.dealer) if (d.type == o.type) price = d.price; if (price == 0) price = 1000000;
-            var m = new Menu { Title = "Dayo", Subtitle = $"{v.Class.name} · condition {v.Condition:0}%{(o.insured ? " · insured" : "")}", Line = "Wetin we dey do?" };
+            var m = new Menu { Title = "Dayo", Subtitle = $"{v.Class.name} · condition {v.Condition:0}%{(o.insured ? " · insured" : "")}{(v.HasNos ? " · NOS FITTED" : "")}", Line = "Wetin we dey do?" };
+            m.Options.Add(new MenuOption { Label = "NFS Underground Tuning & Mod Garage (Engine · Turbo · NOS · Aero · Neon · Paint)", Action = () => OpenNfsGarageMenu(v, o) });
             if (v.Condition < 100f) { int c = Mathf.RoundToInt((100f - v.Condition) * 500f * (o.insured ? 0.5f : 1f)); m.Options.Add(new MenuOption { Label = $"Service · ₦{c:N0}{(o.insured ? " (insured)" : "")}", Action = () => { if (!State.Pay(c)) { State.Toast("Not enough money"); return; } v.Condition = 100f; o.cond = 100f; State.Toast("Serviced"); } }); }
             if (!o.insured) { int c = Mathf.RoundToInt(price * 0.08f); m.Options.Add(new MenuOption { Label = $"Insure · ₦{c:N0}", Action = () => { if (!State.Pay(c)) { State.Toast("Not enough money"); return; } o.insured = true; v.Insured = true; State.Toast("Insured: half-price service, half crash damage"); } }); }
-            if (Data.liveries.Length > 0) m.Options.Add(new MenuOption { Label = "Livery · ₦20,000", Action = () => { if (!State.Pay(20000)) { State.Toast("Not enough money"); return; } o.livery = (o.livery + 1) % Data.liveries.Length; v.ApplyLivery(Entities.Mannequin.Hex(Data.liveries[o.livery])); State.Toast("Fresh paint"); } });
+            if (Data.liveries.Length > 0) m.Options.Add(new MenuOption { Label = "Livery · ₦20,000", Action = () => { if (!State.Pay(20000)) { State.Toast("Not enough money"); return; } o.livery = (o.livery + 1) % Data.liveries.Length; v.ApplyLivery(Data.liveries[o.livery], o.paintFinish); State.Toast("Fresh paint"); } });
             if ((o.type == "danfo" || o.type == "korope") && Data.slogans.Length > 0) m.Options.Add(new MenuOption { Label = "Slogan · ₦5,000", Action = () => { if (!State.Pay(5000)) { State.Toast("Not enough money"); return; } o.slogan = (o.slogan + 1) % Data.slogans.Length; v.ApplySlogan(Data.slogans[o.slogan]); State.Toast("“" + Data.slogans[o.slogan] + "”"); } });
             m.Options.Add(new MenuOption { Label = "Back", Action = () => { var dayo = Contacts.Get("dayo"); if (dayo != null) OpenDealerMenu(dayo); } });
             OpenMenu(m);

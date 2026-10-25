@@ -546,9 +546,12 @@ namespace Rise.EditorTools
                         // EA Sports FC 26 / Dream League Soccer Live 3D Football Match & Knockout Tournament
                         int winsBeforeFc = s.State.S.footballWins;
                         Check(s.StartLiveFootballMatch("fc_neighbourhood_cup") && s.InFootballMatch && s.ActiveFootball.Players.Count == 9 && s.ActiveFootball.BallRoot != null, "Live 3D Football Tournament 'Lagos Neighbourhood Cup' started with 9 3D footballers and match ball");
+                        s.CycleFootballTactic();
+                        Check(s.ActiveFootball.TacticMode == 1 && s.ActiveFootball.TacticLabel == "ALL-OUT ATTACK", "Football tactical mentality switched to ALL-OUT ATTACK");
+                        Check(s.FootballChip() && s.ActiveFootball.SkillBoostTimer > 0f, "Jay-Jay Okocha stepover / elastico skill move executed");
                         Check(s.FootballPass() && !s.ActiveFootball.PlayerHasBall, "FC 26 driven ground pass executed to forward teammate");
                         s.ActiveFootball.PlayerHasBall = true;
-                        Check(s.FootballShoot() && s.ActiveFootball.BallVel.magnitude > 15f, "FC 26 curved power shot fired toward goal");
+                        Check(s.FootballShoot(1.22f) && s.ActiveFootball.BallVel.magnitude > 15f && s.ActiveFootball.LastShotQualityLabel.Contains("GREEN TIMED FINISH"), "FC 26 Green Timed Finish curved power shot fired toward goal");
                         s.ScorePlayerGoal("Captain #10");
                         Check(s.ActiveFootball.HomeScore == 1 && s.ActiveFootball.GoalBannerTimer > 0f, "Goal scored and broadcast goal banner triggered (1-0)");
                         s.CompleteLiveFootballRound(true);
@@ -750,6 +753,53 @@ namespace Rise.EditorTools
                         benchSw.Stop();
                         Check(kanoProduce < fctProduce && riversFuel < 0.85f && anambraElec < 0.85f,
                               $"Interstate commodity arbitrage multipliers verified (Kano produce {kanoProduce:0.00}x vs FCT {fctProduce:0.00}x, Rivers fuel {riversFuel:0.00}x, Anambra electronics {anambraElec:0.00}x) in {benchSw.Elapsed.TotalMilliseconds:0.00} ms");
+
+                        // NOS Nitrous Restriction, NFS Garage Tuning, 0% Fuel Stall & Emergency Refuel, Seasons, Domestic State Flights, Pause & GPS Turn-by-Turn
+                        var ownedKeke = s.Parked.Find(v => v != null && v.Owned && v.Class.id == "keke");
+                        var ownedLux = s.Parked.Find(v => v != null && v.Owned && v.Class.id == "luxury");
+                        Check(ownedKeke != null && !ownedKeke.HasNos && ownedLux != null && ownedLux.HasNos,
+                              "NOS restricted to premium racing cars & custom-built cars (standard keke HasNos=false, luxury HasNos=true)");
+                        var kekeSave = s.State.S.vehicles.Find(v => v.id == ownedKeke.OwnedId);
+                        kekeSave.engineStage = 2; kekeSave.turboStage = 2; kekeSave.nosStage = 1; kekeSave.spoiler = 2; kekeSave.skirtKit = 1; kekeSave.neonColor = 0;
+                        ownedKeke.ApplyOwnedCustomizations(kekeSave, boot.Data);
+                        Check(ownedKeke.HasNos && ownedKeke.IsCustomBuilt && ownedKeke.transform.Find("NfsMods/Spoiler") != null && ownedKeke.transform.Find("NfsMods/NeonUnderglow") != null,
+                              "NFS Underground Garage upgrades applied (Stage 2 Engine/Turbo, Stage 1 NOS, Carbon GT Wing & Cyan 3D Neon Underglow)");
+                        kekeSave.nosStage = 0; kekeSave.spoiler = 0; kekeSave.skirtKit = 0; kekeSave.neonColor = -1;
+                        ownedKeke.ApplyOwnedCustomizations(kekeSave, boot.Data);
+
+                        s.State.S.fuel = 0f;
+                        ownedLux.Speed = 0f;
+                        ownedLux.Drive(1f, 0f, false, false, 1f, 1f, 0.25f);
+                        bool stalledAtZero = Mathf.Abs(ownedLux.Speed) < 0.05f;
+                        s.State.S.cash += 50000;
+                        bool emergencyRefueled = s.EmergencyRefuel() && s.State.S.fuel >= 35f;
+                        s.State.S.fuel = 100f;
+                        Check(stalledAtZero && emergencyRefueled, "Vehicle stalls at 0% fuel and Emergency Roadside Jerrycan Refuel restores fuel");
+
+                        s.Weather.SetSeasonMode("dry");
+                        bool harmattanOk = s.Weather.ActiveSeasonId == "dry" && s.Weather.SeasonalRainMultiplier == 0f;
+                        s.Weather.SetSeasonMode("rainy");
+                        bool rainyOk = s.Weather.ActiveSeasonId == "rainy" && s.Weather.SeasonalRainMultiplier > 1.0f;
+                        s.Weather.SetSeasonMode("");
+                        Check(harmattanOk && rainyOk, "Nigerian Seasonal Calendar verified (Dry Harmattan 0x rain & Rainy Season peak rain)");
+
+                        s.State.S.cash += 150000;
+                        Check(Session.TryGetStateAirport("fct", out var fctAp) && Session.TryGetStateAirport("kano", out _) && !Session.TryGetStateAirport("osun", out _) && s.BookLocalStateFlight(fctAp),
+                              "Domestic commercial flights active for states with operational airports (flew to Abuja Nnamdi Azikiwe Int'l Airport)");
+                        boot.Player.Teleport(savedPos, 0f);
+                        s.CloseMenu();
+
+                        s.SetWaypoint("ladipo");
+                        s.Nav.Tick(boot.Player.transform.position);
+                        Check(s.Nav.Target.HasValue && s.Nav.CurrentRoute.Count >= 2 && s.Nav.EtaSeconds > 0 && !string.IsNullOrEmpty(s.Nav.NextTurnInstruction),
+                              $"Enhanced GPS Turn-by-Turn Navigation verified ({s.Nav.NextTurnSymbol} {s.Nav.NextTurnInstruction}, {s.Nav.CurrentRoute.Count} route nodes, ETA {s.Nav.EtaSeconds}s)");
+                        s.SetWaypoint(null);
+
+                        s.TogglePauseMenu();
+                        bool pauseOpened = s.Paused && s.ActiveMenu != null && s.ActiveMenu.Title == "GAME PAUSED";
+                        s.SetPaused(false);
+                        s.CloseMenu();
+                        Check(pauseOpened && !s.Paused, "Game Pause button & Pause Menu verified");
 
                         stage = 21; stageT = 0f; return;
                     }

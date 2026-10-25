@@ -10,11 +10,12 @@ namespace Rise.World
     public class Navigation : MonoBehaviour
     {
         WorldData data;
-        LineRenderer line;
+        LineRenderer line, coreLine;
         Transform marker, beacon, chevronRoot;
         readonly List<Transform> chevrons = new List<Transform>();
         readonly List<Material> chevronMats = new List<Material>();
-        List<Vector3> currentRoute = new List<Vector3>();
+        readonly List<Transform> enRouteChevrons = new List<Transform>();
+        readonly List<Vector3> currentRoute = new List<Vector3>();
         float refreshT;
         class Node { public float x, z; public List<(Node to, float w)> edges = new List<(Node, float)>(); }
         readonly List<Node> nodes = new List<Node>();
@@ -23,6 +24,11 @@ namespace Rise.World
         [System.NonSerialized] public Vector3? Target;   // world position of the objective, or null (runtime only)
         public float RouteLength { get; private set; }
         public Vector3 NextWaypoint { get; private set; }
+        public IReadOnlyList<Vector3> CurrentRoute => currentRoute;
+        public string NextTurnInstruction { get; private set; } = "";
+        public string NextTurnSymbol { get; private set; } = "↑";
+        public float NextTurnDistance { get; private set; }
+        public float EtaSeconds => Mathf.Max(1f, RouteLength / 15f);
 
         public void Init(WorldData world, Transform parent)
         {
@@ -46,9 +52,16 @@ namespace Rise.World
             var go = new GameObject("GPS route"); go.transform.SetParent(parent, false);
             go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);   // TransformZ alignment: the strip lies flat on the road
             line = go.AddComponent<LineRenderer>();
-            line.material = new Material(unlit) { color = new Color(1.0f, 0.86f, 0.16f, 0.92f) };
-            line.widthMultiplier = 0.55f; line.numCornerVertices = 3; line.numCapVertices = 3; line.alignment = LineAlignment.TransformZ; line.positionCount = 0;
+            line.material = new Material(unlit) { color = new Color(0.0f, 0.88f, 1.0f, 0.90f) };
+            line.widthMultiplier = 0.88f; line.numCornerVertices = 4; line.numCapVertices = 4; line.alignment = LineAlignment.TransformZ; line.positionCount = 0;
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            var coreGo = new GameObject("GPS route core"); coreGo.transform.SetParent(parent, false);
+            coreGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            coreLine = coreGo.AddComponent<LineRenderer>();
+            coreLine.material = new Material(unlit) { color = new Color(1.0f, 0.92f, 0.22f, 0.98f) };
+            coreLine.widthMultiplier = 0.36f; coreLine.numCornerVertices = 4; coreLine.numCapVertices = 4; coreLine.alignment = LineAlignment.TransformZ; coreLine.positionCount = 0;
+            coreLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
             // Glowing golden-yellow 3D ground halo ring + floating taxi/objective beacon + road approach chevrons
             marker = new GameObject("Mission marker").transform;
@@ -79,7 +92,7 @@ namespace Rise.World
             RingPart(beacon, "CarCabin", PrimitiveType.Cube, new Vector3(0f, 0.24f, -0.05f), new Vector3(0.76f, 0.26f, 0.82f), beaconMat);
             RingPart(beacon, "TaxiTopper", PrimitiveType.Cube, new Vector3(0f, 0.44f, -0.05f), new Vector3(0.36f, 0.16f, 0.24f), haloRim);
 
-            // Animated glowing white/gold ground chevrons ("> > > > >") leading into the ring
+            // Animated glowing white/gold ground chevrons ("> > > > >") leading into the ring + en-route ahead of the player
             chevronRoot = new GameObject("ApproachChevrons").transform;
             chevronRoot.SetParent(parent, false);
             for (int i = 0; i < 6; i++)
@@ -92,6 +105,16 @@ namespace Rise.World
                 ch.gameObject.SetActive(false);
                 chevrons.Add(ch);
                 chevronMats.Add(cMat);
+            }
+            var enRouteMat = new Material(unlit) { color = new Color(0.08f, 0.96f, 1.0f, 0.95f) };
+            for (int i = 0; i < 5; i++)
+            {
+                var er = new GameObject("EnRouteChevron_" + i).transform;
+                er.SetParent(chevronRoot, false);
+                RingPart(er, "LeftWing", PrimitiveType.Cube, new Vector3(-0.42f, 0.06f, -0.20f), new Vector3(1.02f, 0.04f, 0.18f), enRouteMat, Quaternion.Euler(0f, -32f, 0f));
+                RingPart(er, "RightWing", PrimitiveType.Cube, new Vector3(0.42f, 0.06f, -0.20f), new Vector3(1.02f, 0.04f, 0.18f), enRouteMat, Quaternion.Euler(0f, 32f, 0f));
+                er.gameObject.SetActive(false);
+                enRouteChevrons.Add(er);
             }
 
             marker.gameObject.SetActive(false);
@@ -214,16 +237,34 @@ namespace Rise.World
             if (Target == null)
             {
                 line.positionCount = 0;
+                if (coreLine != null) coreLine.positionCount = 0;
+                currentRoute.Clear();
                 marker.gameObject.SetActive(false);
                 foreach (var c in chevrons) if (c != null) c.gameObject.SetActive(false);
+                foreach (var er in enRouteChevrons) if (er != null) er.gameObject.SetActive(false);
                 RouteLength = 0f;
+                NextTurnInstruction = "";
+                NextTurnSymbol = "↑";
+                NextTurnDistance = 0f;
                 return;
             }
-            currentRoute = Route(from, Target.Value);
-            line.positionCount = currentRoute.Count; line.SetPositions(currentRoute.ToArray());
+            var computed = Route(from, Target.Value);
+            currentRoute.Clear();
+            currentRoute.AddRange(computed);
+            var arr = currentRoute.ToArray();
+            line.positionCount = arr.Length;
+            line.SetPositions(arr);
+            if (coreLine != null)
+            {
+                var coreArr = new Vector3[arr.Length];
+                for (int i = 0; i < arr.Length; i++) coreArr[i] = arr[i] + Vector3.up * 0.02f;
+                coreLine.positionCount = coreArr.Length;
+                coreLine.SetPositions(coreArr);
+            }
             float len = 0f; for (int i = 1; i < currentRoute.Count; i++) len += Vector3.Distance(currentRoute[i], currentRoute[i - 1]);
             RouteLength = len;
             NextWaypoint = currentRoute.Count > 1 ? currentRoute[1] : Target.Value;
+            ComputeTurnInstruction(from);
             marker.gameObject.SetActive(true);
             var m = Target.Value; m.y = data.DeckHeightAt(m) + 0.12f; marker.position = m;
 
@@ -243,6 +284,98 @@ namespace Rise.World
                 chevrons[i].rotation = rot;
                 chevrons[i].gameObject.SetActive(true);
             }
+
+            // Place 5 en-route directional chevrons directly ahead of the player along the road path.
+            PlaceEnRouteChevrons();
+        }
+
+        void PlaceEnRouteChevrons()
+        {
+            if (currentRoute.Count < 2 || RouteLength < 25f)
+            {
+                foreach (var er in enRouteChevrons) if (er != null) er.gameObject.SetActive(false);
+                return;
+            }
+            for (int i = 0; i < enRouteChevrons.Count; i++)
+            {
+                float targetDist = 8f + i * 10f;
+                if (targetDist >= RouteLength - 14f)
+                {
+                    enRouteChevrons[i].gameObject.SetActive(false);
+                    continue;
+                }
+                if (SampleRouteAtDistance(targetDist, out var pt, out var dir))
+                {
+                    pt.y = data.DeckHeightAt(pt) + 0.17f;
+                    enRouteChevrons[i].position = pt;
+                    enRouteChevrons[i].rotation = Quaternion.LookRotation(dir, Vector3.up);
+                    enRouteChevrons[i].gameObject.SetActive(true);
+                }
+                else
+                {
+                    enRouteChevrons[i].gameObject.SetActive(false);
+                }
+            }
+        }
+
+        bool SampleRouteAtDistance(float distAlong, out Vector3 point, out Vector3 tangent)
+        {
+            float accum = 0f;
+            for (int i = 1; i < currentRoute.Count; i++)
+            {
+                Vector3 a = currentRoute[i - 1], b = currentRoute[i];
+                float seg = Vector3.Distance(a, b);
+                if (accum + seg >= distAlong && seg > 0.01f)
+                {
+                    float t = (distAlong - accum) / seg;
+                    point = Vector3.Lerp(a, b, t);
+                    Vector3 d = b - a; d.y = 0f;
+                    tangent = d.sqrMagnitude > 0.001f ? d.normalized : Vector3.forward;
+                    return true;
+                }
+                accum += seg;
+            }
+            point = currentRoute[currentRoute.Count - 1];
+            tangent = Vector3.forward;
+            return false;
+        }
+
+        void ComputeTurnInstruction(Vector3 from)
+        {
+            if (RouteLength < 22f || currentRoute.Count < 2)
+            {
+                NextTurnSymbol = "🏁";
+                NextTurnDistance = RouteLength;
+                NextTurnInstruction = "Arriving at destination";
+                return;
+            }
+
+            float distToCorner = 0f;
+            for (int i = 1; i < currentRoute.Count - 1; i++)
+            {
+                Vector3 p0 = currentRoute[i - 1], p1 = currentRoute[i], p2 = currentRoute[i + 1];
+                distToCorner += Vector3.Distance(p0, p1);
+                Vector3 d1 = p1 - p0; d1.y = 0f;
+                Vector3 d2 = p2 - p1; d2.y = 0f;
+                if (d1.sqrMagnitude < 0.05f || d2.sqrMagnitude < 0.05f) continue;
+                float angle = Vector3.SignedAngle(d1.normalized, d2.normalized, Vector3.up);
+                if (Mathf.Abs(angle) > 28f)
+                {
+                    NextTurnSymbol = angle < 0f ? "↰" : "↱";
+                    NextTurnDistance = distToCorner;
+                    Vector3 afterTurn = p1 + d2.normalized * 12f;
+                    var road = data.RoadAt(afterTurn, 14f);
+                    string roadName = road != null ? data.RoadNameAt(road, road.Along(afterTurn)) : "cross street";
+                    NextTurnInstruction = $"{(angle < 0f ? "Turn Left" : "Turn Right")} onto {roadName}";
+                    return;
+                }
+            }
+
+            NextTurnSymbol = "↑";
+            NextTurnDistance = RouteLength;
+            var curRoad = data.RoadAt(from, 14f);
+            string curRoadName = curRoad != null ? data.RoadNameAt(curRoad, curRoad.Along(from)) : "current road";
+            NextTurnInstruction = $"Continue straight on {curRoadName}";
         }
 
         public void Tick(Vector3 from)

@@ -161,6 +161,8 @@ namespace Rise
         }
         public static bool HornPressed => Pressed(horn, (K != null && K.hKey.wasPressedThisFrame) || (G != null && G.leftStickButton.wasPressedThisFrame)) || Pressed(driveHorn, false);
         public static bool EscapePressed => Pressed(menu, (K != null && K.escapeKey.wasPressedThisFrame) || (G != null && G.startButton.wasPressedThisFrame));
+        public static bool PausePressed => EscapePressed || (K != null && K.f1Key.wasPressedThisFrame);
+        public static bool MapPressed => K != null && K.mKey.wasPressedThisFrame;
         public static bool ClickPressed => M != null && M.leftButton.wasPressedThisFrame;
         public static bool ChatPressed => Pressed(chat, K != null && (K.tKey.wasPressedThisFrame || K.enterKey.wasPressedThisFrame));
         public static bool PhonePressed => UI.TouchControls.TakePhone() || Pressed(phone, (K != null && (K.pKey.wasPressedThisFrame || K.tabKey.wasPressedThisFrame)) || (G != null && G.selectButton.wasPressedThisFrame));
@@ -181,6 +183,17 @@ namespace Rise
                 return false;
             }
         }
+        public static bool AttackHeld
+        {
+            get
+            {
+                if (K != null && K.fKey.isPressed) return true;
+                if (G != null && G.rightShoulder.isPressed) return true;
+                if (M != null && Cursor.lockState == CursorLockMode.Locked && M.leftButton.isPressed) return true;
+                return false;
+            }
+        }
+        public static bool ReloadPressed => K != null && K.rKey.wasPressedThisFrame;
         public static bool PickupPressed => UI.TouchControls.TakeItem() || Pressed(pickup, (K != null && K.gKey.wasPressedThisFrame) || (G != null && G.dpad.down.wasPressedThisFrame));
         public static bool CycleWeaponPressed => Pressed(cycleWeapon, (K != null && K.qKey.wasPressedThisFrame) || (G != null && G.leftShoulder.wasPressedThisFrame));
 

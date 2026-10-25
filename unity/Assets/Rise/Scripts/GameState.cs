@@ -74,7 +74,17 @@ namespace Rise
         public int Get(string k) => k == "public" ? publicRep : k == "business" ? business : k == "street" ? street : k == "social" ? social : 0;
         public void Add(string k, int n) { switch (k) { case "public": publicRep += n; break; case "business": business += n; break; case "street": street += n; break; case "social": social += n; break; } }
     }
-    [Serializable] public class OwnedVehicle { public string id, type; public float cond = 100f, x, y, z, yaw; public bool insured; public int livery = -1, slogan = -1; }
+    [Serializable] public class OwnedVehicle
+    {
+        public string id, type;
+        public float cond = 100f, x, y, z, yaw;
+        public bool insured;
+        public int livery = -1, slogan = -1;
+        // NFS Garage tuning & visual mods
+        public int engineStage, turboStage, suspensionStage, nosStage;
+        public int spoiler, skirtKit, roofScoop, rims, neonColor = -1, paintFinish;
+        public string customHex = "";
+    }
 
     [Serializable] public class OwnedBusiness { public string id; public float stock = 100f; public string price = "normal"; public List<string> staff = new List<string>(); public List<string> shifts = new List<string>(); }
     [Serializable] public class PropertyUpgrades { public string id; public List<string> items = new List<string>(); public string complaint = ""; }

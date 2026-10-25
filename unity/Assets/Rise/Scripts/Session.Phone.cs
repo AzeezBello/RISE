@@ -41,42 +41,111 @@ namespace Rise
             OpenMenu(m);
         }
 
+        static string CompassDirection(Vector3 from, Vector3 to)
+        {
+            Vector3 d = to - from; d.y = 0f;
+            if (d.sqrMagnitude < 1f) return "HERE";
+            float deg = (Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg + 360f) % 360f;
+            string[] dirs = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+            return dirs[Mathf.RoundToInt(deg / 45f) % 8];
+        }
+
         public void AppMap(string filter = "")
         {
             string q = (filter ?? "").Trim().ToLowerInvariant();
             ResolveWaypoint(State.S.waypointId, out var currentWp);
+            var origin = Focus.position;
+            var curRegion = Data.RegionAt(origin);
+            string turnText = Nav != null && Nav.Target != null && !string.IsNullOrEmpty(Nav.NextTurnInstruction)
+                ? $" · {Nav.NextTurnSymbol} {Nav.NextTurnInstruction} ({Nav.RouteLength:0}m)"
+                : "";
             var m = new Menu
             {
                 Title = "Map · GPS",
-                Subtitle = !string.IsNullOrEmpty(currentWp) ? $"Active waypoint: {currentWp}" : $"{Data.landmarks.Length} landmarks · {Data.busStops.Length} bus stops · {Contacts.Contacts.Count} contacts",
-                Line = "Search any place, bus stop, property or contact in Lagos and tap to set a GPS route."
+                Subtitle = !string.IsNullOrEmpty(currentWp)
+                    ? $"Active GPS: {currentWp}{turnText}"
+                    : $"You are in {curRegion?.name ?? "Surulere"} · {Data.landmarks.Length} landmarks · {Data.busStops.Length} bus stops · {Contacts.Contacts.Count} contacts",
+                Line = "Click any location on the interactive GPS map canvas or choose a destination below for turn-by-turn road navigation."
             };
             m.Fields.Add(new MenuField { Label = "Search Lagos", Value = filter ?? "" });
             m.Options.Add(new MenuOption { Label = "Search / filter list", Action = () => AppMap(m.Fields[0].Value) });
             if (!string.IsNullOrEmpty(State.S.waypointId))
-                m.Options.Add(new MenuOption { Label = $"Clear GPS ({currentWp})", Action = () => { SetWaypoint(""); AppMap(m.Fields[0].Value); } });
+                m.Options.Add(new MenuOption { Label = $"✕ Clear Active GPS ({currentWp})", Action = () => { SetWaypoint(""); AppMap(m.Fields[0].Value); } });
 
-            var entries = new System.Collections.Generic.List<(string id, string label, float dist)>();
-            var origin = Focus.position;
+            // Quick-Tap Smart GPS Presets when no text filter is active
+            if (string.IsNullOrEmpty(q))
+            {
+                if (Data.TryPlace("fuel", out var fuelPlace))
+                {
+                    float dFuel = Vector3.Distance(origin, fuelPlace.World());
+                    m.Options.Add(new MenuOption { Label = $"⛽ Quick GPS → Nearest Filling Station ({fuelPlace.name} · {dFuel:0} m)", Action = () => { SetWaypoint("fuel"); PhoneOpen = false; } });
+                }
+                if (Data.TryPlace("ladipo", out var ladipoPlace))
+                {
+                    float dLad = Vector3.Distance(origin, ladipoPlace.World());
+                    m.Options.Add(new MenuOption { Label = $"🏎️ Quick GPS → NFS Garage & Ladipo Auto Hub ({dLad:0} m)", Action = () => { SetWaypoint("ladipo"); PhoneOpen = false; } });
+                }
+                var nearAirport = Data.NearestLandmark("airport", origin, 99999f);
+                if (nearAirport != null)
+                {
+                    float dAir = Vector3.Distance(origin, nearAirport.World());
+                    m.Options.Add(new MenuOption { Label = $"✈ Quick GPS → Nearest Airport ({nearAirport.shortName ?? nearAirport.name} · {dAir:0} m)", Action = () => { SetWaypoint(nearAirport.id); PhoneOpen = false; } });
+                }
+                var nearBank = Data.NearestLandmark("bank", origin, 99999f);
+                if (nearBank != null)
+                {
+                    float dBank = Vector3.Distance(origin, nearBank.World());
+                    m.Options.Add(new MenuOption { Label = $"🏦 Quick GPS → Nearest Bank / ATM ({nearBank.shortName ?? nearBank.name} · {dBank:0} m)", Action = () => { SetWaypoint(nearBank.id); PhoneOpen = false; } });
+                }
+                if (State.Home != null)
+                {
+                    float dHome = Vector3.Distance(origin, State.Home.Door);
+                    m.Options.Add(new MenuOption { Label = $"🏠 Quick GPS → My Home ({State.Home.name} · {dHome:0} m)", Action = () => { SetWaypoint(State.Home.id); PhoneOpen = false; } });
+                }
+                foreach (var pv in Parked)
+                {
+                    if (pv != null && pv.Owned && !string.IsNullOrEmpty(pv.OwnedId) && pv != Vehicle)
+                    {
+                        float dVeh = Vector3.Distance(origin, pv.transform.position);
+                        string vid = pv.OwnedId;
+                        m.Options.Add(new MenuOption { Label = $"🚗 Quick GPS → My {pv.Class.name} ({dVeh:0} m)", Action = () => { SetWaypoint("veh:" + vid); PhoneOpen = false; } });
+                        break;
+                    }
+                }
+            }
+
+            var entries = new System.Collections.Generic.List<(string id, string label, float dist, string dir)>();
             foreach (var l in Data.landmarks)
-                if (string.IsNullOrEmpty(q) || l.name.ToLowerInvariant().Contains(q) || (l.shortName != null && l.shortName.ToLowerInvariant().Contains(q)))
-                    entries.Add((l.id, $"Landmark · {l.name}", Vector3.Distance(origin, l.World())));
+                if (string.IsNullOrEmpty(q) || l.name.ToLowerInvariant().Contains(q) || (l.shortName != null && l.shortName.ToLowerInvariant().Contains(q)) || (l.kind != null && l.kind.ToLowerInvariant().Contains(q)))
+                {
+                    var w = l.World();
+                    entries.Add((l.id, $"Landmark · {l.name}", Vector3.Distance(origin, w), CompassDirection(origin, w)));
+                }
             foreach (var b in Data.busStops)
                 if (string.IsNullOrEmpty(q) || b.name.ToLowerInvariant().Contains(q) || b.shortName.ToLowerInvariant().Contains(q))
-                    entries.Add((b.id, $"Bus Stop · {b.name}", Vector3.Distance(origin, b.World())));
+                {
+                    var w = b.World();
+                    entries.Add((b.id, $"Bus Stop · {b.name}", Vector3.Distance(origin, w), CompassDirection(origin, w)));
+                }
             foreach (var p in Data.properties)
                 if (string.IsNullOrEmpty(q) || p.name.ToLowerInvariant().Contains(q))
-                    entries.Add((p.id, $"Property · {p.name}", Vector3.Distance(origin, p.Door)));
+                {
+                    var w = p.Door;
+                    entries.Add((p.id, $"Property · {p.name}", Vector3.Distance(origin, w), CompassDirection(origin, w)));
+                }
             foreach (var c in Contacts.Contacts)
                 if (string.IsNullOrEmpty(q) || c.data.name.ToLowerInvariant().Contains(q) || (c.data.role != null && c.data.role.ToLowerInvariant().Contains(q)))
-                    entries.Add((c.data.id, $"Contact · {c.data.name} ({c.data.role})", Vector3.Distance(origin, c.pos)));
+                {
+                    entries.Add((c.data.id, $"Contact · {c.data.name} ({c.data.role})", Vector3.Distance(origin, c.pos), CompassDirection(origin, c.pos)));
+                }
 
             entries.Sort((a, b) => a.dist.CompareTo(b.dist));
-            int count = Mathf.Min(8, entries.Count);
+            int count = Mathf.Min(12, entries.Count);
             for (int i = 0; i < count; i++)
             {
                 var entry = entries[i];
-                m.Options.Add(new MenuOption { Label = $"Set GPS → {entry.label} ({entry.dist:0} m)", Action = () => { SetWaypoint(entry.id); PhoneOpen = false; } });
+                string distStr = entry.dist < 1000f ? $"{entry.dist:0} m" : $"{entry.dist / 1000f:0.1} km";
+                m.Options.Add(new MenuOption { Label = $"Set GPS → {entry.label} ({distStr} {entry.dir})", Action = () => { SetWaypoint(entry.id); PhoneOpen = false; } });
             }
             m.Options.Add(new MenuOption { Label = "Back", Action = OpenPhone });
             OpenMenu(m);
@@ -160,7 +229,9 @@ namespace Rise
                 new MenuOption { Label = "Indoor Activities & Indoor Missions (Raid / Vault / Boxing)", Action = OpenIndoorMenu },
                 new MenuOption { Label = "Lagos Clubbing & Social Nightlife (VIP Lounge / DJ / Owambe)", Action = OpenNightlifeHubMenu },
                 new MenuOption { Label = "Live 3D Football & Tournaments (FC 26 / DLS Mode)", Action = () => OpenFootballMenu() },
-                new MenuOption { Label = "NFS Street Racing Underground (Circuit / Drift / Speedtrap)", Action = () => OpenRaceMenu() });
+                new MenuOption { Label = "NFS Street Racing Underground (Circuit / Drift / Speedtrap)", Action = () => OpenRaceMenu() },
+                new MenuOption { Label = "NFS Underground Tuning & Mod Garage (Performance · NOS · Aero · Paint)", Action = () => { PhoneOpen = false; OpenNfsGarageMenu(Vehicle); } },
+                new MenuOption { Label = $"Local Domestic Flights Departure Board ({StateAirports.Length} States with Airports)", Action = () => { PhoneOpen = false; OpenStateFlightsMenu(); } });
         }
 
         void AppBank()
@@ -244,6 +315,9 @@ namespace Rise
             }
             if (!string.IsNullOrEmpty(st.equippedWeapon))
                 opts.Add(new MenuOption { Label = "Holster weapon (hide from hand)", Action = () => { EquipWeapon(""); AppInventory(); } });
+            if (st.fuel < 99f)
+                opts.Add(new MenuOption { Label = $"⛽ Emergency Roadside Jerrycan Refuel (100% Fuel) · ₦4,000 (now {st.fuel:0}%)", Action = () => { EmergencyRefuel(4000); AppInventory(); } });
+            opts.Add(new MenuOption { Label = "🏎️ NFS Underground Tuning & Mod Garage (Performance · NOS · Aero · Paint)", Action = () => { PhoneOpen = false; OpenNfsGarageMenu(Vehicle); } });
             opts.Add(new MenuOption { Label = $"Tactical Action Ops & Armory ({st.ammo} ammo)", Action = AppActionOps });
             Page("Inventory", "What you carry and own", sb.ToString(), opts.ToArray());
         }
@@ -353,11 +427,13 @@ namespace Rise
             var st = State.S; string[] q = World.QualityGovernor.Names;
             string level = Governor != null ? q[Governor.Level] : q[Mathf.Clamp(st.quality, 0, 2)];
             string perf = Governor != null ? $" · {Governor.Fps:0} fps · render scale {Governor.RenderScale * 100f:0} %" : "";
-            Page("Settings", $"Graphics {(st.qualityAuto ? "Auto → " : "")}{level}{perf} · cinematic look {(st.cinematic ? "on" : "off")} · sound {(st.sound ? "on" : "off")}",
+            string seasonStr = Weather != null ? Weather.ActiveSeasonLabel : (Clock != null ? Clock.SeasonLabel : "DRY · HARMATTAN");
+            Page("Settings", $"Graphics {(st.qualityAuto ? "Auto → " : "")}{level}{perf} · Season: {seasonStr} · sound {(st.sound ? "on" : "off")}",
                 "Auto reads the GPU and steps down whenever frames stay slow; dynamic resolution moves in four steps and climbs back when it can. The cinematic look is the HDR, bloom and tone-mapping pass. " + SystemInfo.graphicsDeviceName,
                 new MenuOption { Label = st.qualityAuto ? "Graphics: Auto (tap for Low)" : $"Graphics: {level} (tap for next)", Action = () => { if (st.qualityAuto) { st.qualityAuto = false; st.quality = 0; } else { st.quality = (st.quality + 1) % 3; if (st.quality == 0) st.qualityAuto = true; } ApplyQuality(); AppSettings(); } },
                 new MenuOption { Label = "Toggle cinematic look", Action = () => { st.cinematic = !st.cinematic; ApplyQuality(); AppSettings(); } },
                 new MenuOption { Label = $"Sound: {(st.sound ? "on" : "off")}", Action = () => { st.sound = !st.sound; AppSettings(); } },
+                new MenuOption { Label = $"Season Mode: {seasonStr} (tap to cycle Calendar / Rainy / Dry Harmattan)", Action = () => { if (Weather != null) { string next = Weather.ForcedSeason == "" ? "rainy" : Weather.ForcedSeason == "rainy" ? "dry" : ""; Weather.SetSeasonMode(next); State.Toast($"Season set to {Weather.ActiveSeasonLabel}"); } AppSettings(); } },
                 new MenuOption { Label = $"Mature content (night hustlers): {(st.mature ? "on" : "off")}", Action = () => { st.mature = !st.mature; AppSettings(); } },
                 new MenuOption { Label = "Save now", Action = () => { AutoSave(); State.Toast("Saved"); AppSettings(); } },
                 new MenuOption { Label = "New game (erases the save)", Action = () => { GameState.ClearSave(); State.Toast("Save erased — restart to begin again"); AppSettings(); } });

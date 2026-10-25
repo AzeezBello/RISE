@@ -64,10 +64,16 @@ namespace Rise.Player
             lastLookInput = -10f;   // let the camera swing behind the vehicle
         }
 
+        public static bool KeepCursorUnlocked;
+
         void Update()
         {
+            if (KeepCursorUnlocked)
+            {
+                if (Cursor.lockState == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+                return;
+            }
             if (GameInput.EscapePressed) { bool locked = Cursor.lockState == CursorLockMode.Locked; Cursor.lockState = locked ? CursorLockMode.None : CursorLockMode.Locked; Cursor.visible = locked; }
-            if (Cursor.lockState != CursorLockMode.Locked && GameInput.ClickPressed) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
         }
 
         void LateUpdate()

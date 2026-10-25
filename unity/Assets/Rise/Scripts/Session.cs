@@ -35,7 +35,8 @@ namespace Rise
         [System.NonSerialized] public Rise.Net.Account Account; [System.NonSerialized] public Rise.Net.CloudSave Cloud; [System.NonSerialized] public Rise.Net.Multiplayer Players;
         [System.NonSerialized] public bool Typing;   // a menu text field has the keyboard (set by the HUD)
         [System.NonSerialized] public bool ChatOpen; [System.NonSerialized] public string ChatDraft = "";
-        float cloudT;
+        [System.NonSerialized] public bool Paused;
+        float cloudT, outOfFuelToastT;
         int lastDay;
 
         public void Init(WorldData data, GameState state, DayNightCycle clock, PlayerController player, ThirdPersonCamera camera, TrafficSystem traffic, ContactSystem contacts, TrafficLights lights)
@@ -64,10 +65,87 @@ namespace Rise
             SpawnOwned(keke);
         }
 
+        public void SetPaused(bool paused)
+        {
+            Paused = paused;
+            if (Clock != null) Clock.enabled = !paused;
+            if (Traffic != null) Traffic.enabled = !paused;
+            if (Weather != null) Weather.enabled = !paused;
+            if (Events != null) Events.enabled = !paused;
+            if (Player != null) Player.InputEnabled = !paused && ActiveMenu == null;
+            if (!paused && ActiveMenu != null && ActiveMenu.Title == "GAME PAUSED")
+                ActiveMenu = null;
+        }
+
+        public void ResumeGame()
+        {
+            SetPaused(false);
+            ActiveMenu = null;
+        }
+
+        public void TogglePauseMenu()
+        {
+            if (Paused) ResumeGame();
+            else OpenPauseMenu();
+        }
+
+        public void OpenPauseMenu()
+        {
+            PhoneOpen = false;
+            SetPaused(true);
+            var st = State.S;
+            string seasonStr = Weather != null ? Weather.ActiveSeasonLabel : (Clock != null ? Clock.SeasonLabel : "DRY · HARMATTAN");
+            var m = new Menu
+            {
+                Title = "GAME PAUSED",
+                Subtitle = $"{Clock.ClockText} · {Clock.DateText} · {seasonStr} · {Data.RegionAt(Focus.position)?.name ?? "Lagos"}",
+                Line = $"Cash ₦{st.cash:N0} · Bank ₦{st.bank:N0} · Fuel {st.fuel:0}% · Health {st.health:0}%"
+            };
+            m.Options.Add(new MenuOption { Label = "▶ Resume Game", Action = ResumeGame });
+            m.Options.Add(new MenuOption { Label = "📱 Open Smartphone", Action = () => { SetPaused(false); OpenPhone(); } });
+            m.Options.Add(new MenuOption { Label = "🗺️ Interactive Map & GPS Navigation", Action = () => { SetPaused(false); PhoneOpen = true; AppMap(""); } });
+            m.Options.Add(new MenuOption { Label = "🏎️ NFS Underground Tuning & Mod Garage", Action = () => { SetPaused(false); OpenNfsGarageMenu(Vehicle); } });
+            if (st.fuel < 99f)
+            {
+                m.Options.Add(new MenuOption
+                {
+                    Label = $"⛽ Emergency Roadside Jerrycan Refuel (100% Fuel) · ₦4,000 (now {st.fuel:0}%)",
+                    Action = () => { EmergencyRefuel(4000); OpenPauseMenu(); }
+                });
+            }
+            m.Options.Add(new MenuOption
+            {
+                Label = $"🌦️ Season Mode: {seasonStr} (tap to cycle Calendar / Rainy / Dry Harmattan)",
+                Action = () =>
+                {
+                    if (Weather != null)
+                    {
+                        string next = Weather.ForcedSeason == "" ? "rainy" : Weather.ForcedSeason == "rainy" ? "dry" : "";
+                        Weather.SetSeasonMode(next);
+                        State.Toast($"Season set to {Weather.ActiveSeasonLabel}");
+                    }
+                    OpenPauseMenu();
+                }
+            });
+            m.Options.Add(new MenuOption { Label = "⚙️ Settings (Audio / Graphics / Save)", Action = () => { SetPaused(false); PhoneOpen = true; AppSettings(); } });
+            m.Options.Add(new MenuOption { Label = "💾 Save Game Now", Action = () => { AutoSave(); State.Toast("Game saved"); OpenPauseMenu(); } });
+            OpenMenu(m);
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;
             State.PruneToasts();
+            if (InNfsGarageBay) UpdateNfsGarageBay(dt);
+
+            if (Paused)
+            {
+                if (GameInput.PausePressed) { ResumeGame(); return; }
+                if (ActiveMenu != null) { UpdateMenu(); if (ActiveMenu == null) SetPaused(false); }
+                else SetPaused(false);
+                return;
+            }
+
             Vitals(dt);
             heatT -= dt; if (heatT <= 0f) { heatT = 45f; if (State.S.heat > 0) State.S.heat--; }
             saveT += dt; if (saveT > 15f) { saveT = 0f; AutoSave(); }
@@ -89,7 +167,16 @@ namespace Rise
             if (ChatOpen) { Player.InputEnabled = false; return; }   // the HUD text field owns the keyboard; Enter sends, Esc closes
             if (ActiveMenu == null && Players != null && GameInput.ChatPressed) { ChatOpen = true; ChatDraft = ""; return; }
             if (ActiveMenu == null && GameInput.PhonePressed) { OpenPhone(); return; }
-            if (ActiveMenu != null) { UpdateMenu(); if (ActiveMenu == null && PhoneOpen) PhoneOpen = false; return; }
+            if (ActiveMenu == null && GameInput.MapPressed) { PhoneOpen = true; AppMap(""); return; }
+            if (ActiveMenu == null && GameInput.PausePressed) { OpenPauseMenu(); return; }
+            if (ActiveMenu != null)
+            {
+                if (GameInput.PausePressed) { CloseMenu(); PhoneOpen = false; if (InNfsGarageBay) LeaveNfsGarageBay(); return; }
+                UpdateMenu();
+                if (ActiveMenu == null && PhoneOpen) PhoneOpen = false;
+                if (ActiveMenu == null && InNfsGarageBay) LeaveNfsGarageBay();
+                return;
+            }
             if (Vehicle != null) { UpdateDriving(dt); return; }
             UpdateOnFoot();
         }
@@ -144,16 +231,48 @@ namespace Rise
                 Player.Swimming = false;
                 Player.CanSprint = State.S.stamina > 0f;
                 target = Target.None;
+                string rxName = ActiveFootball.BestReceiver != null ? $" (#{ActiveFootball.BestReceiver.Number} {ActiveFootball.BestReceiver.Name})" : "";
                 Prompt = ActiveFootball.PlayerHasBall
-                    ? "PASS [E]  ·  SHOOT [F / CLICK]  ·  CHIP [G]  ·  MENU [X]"
-                    : "TACKLE / SHOOT [F / CLICK]  ·  CALL PASS [E]  ·  MENU [X]";
-                if (GameInput.AttackPressed)
+                    ? $"PASS{rxName} [E]  ·  HOLD/TAP SHOOT [F / CLICK]  ·  SKILL / CHIP [G]  ·  TACTIC ({ActiveFootball.TacticLabel}) [R]"
+                    : (ActiveFootball.BallCarrier != null && ActiveFootball.BallCarrier.IsHome)
+                        ? $"1-2 PASS TO ME [E]  ·  COMMAND SHOT [F / CLICK]  ·  TACTIC ({ActiveFootball.TacticLabel}) [R]"
+                        : $"SLIDE TACKLE [F / CLICK]  ·  PRESS BALL  ·  TACTIC ({ActiveFootball.TacticLabel}) [R]  ·  MENU [X]";
+
+                if (ActiveFootball.PlayerHasBall)
+                {
+                    if (GameInput.AttackHeld)
+                    {
+                        ActiveFootball.ChargingShot = true;
+                        ActiveFootball.ShotPowerCharge = Mathf.Clamp01(ActiveFootball.ShotPowerCharge + Time.deltaTime * 1.35f);
+                        if (ActiveFootball.ShotPowerCharge >= 1.0f)
+                        {
+                            FootballShoot(0.85f + ActiveFootball.ShotPowerCharge * 0.60f);
+                            ActiveFootball.ShotPowerCharge = 0f;
+                        }
+                        return;
+                    }
+                    if (ActiveFootball.ChargingShot && ActiveFootball.ShotPowerCharge > 0.04f)
+                    {
+                        float pwr = 0.85f + ActiveFootball.ShotPowerCharge * 0.60f;
+                        ActiveFootball.ShotPowerCharge = 0f;
+                        ActiveFootball.ChargingShot = false;
+                        FootballShoot(pwr);
+                        return;
+                    }
+                    if (GameInput.AttackPressed)
+                    {
+                        FootballShoot(1.18f);
+                        return;
+                    }
+                }
+                else if (GameInput.AttackPressed)
                 {
                     if (!FootballShoot()) FootballTackle();
                     return;
                 }
                 if (GameInput.InteractPressed) { FootballPass(); return; }
                 if (GameInput.PickupPressed || GameInput.CycleWeaponPressed) { FootballChip(); return; }
+                if (GameInput.ReloadPressed) { CycleFootballTactic(); return; }
                 if (GameInput.DeclinePressed) { OpenFootballMenu(); return; }
                 return;
             }
@@ -406,12 +525,18 @@ namespace Rise
             }
             else sinking = false;
             Vehicle.Drive(gas, brake, boost, hand, h, State.S.fuel / 100f, dt);
+            if (State.S.fuel <= 0.05f && gas > 0.1f && Time.time - outOfFuelToastT > 4.5f)
+            {
+                outOfFuelToastT = Time.time;
+                State.Toast("Out of fuel (0%)! Engine stalled — use Emergency Jerrycan on your Phone [P] or Pause Menu [Esc].");
+            }
             if (Player != null) Player.transform.position = Vehicle.transform.position;
             if (Vehicle.LastImpact > 2f) { UI.SoundSystem.I?.PlayHorn(); State.Toast(Vehicle.LastImpact > 8f ? "Crash! Vehicle damaged" : "Scrape"); Vehicle.LastImpact = 0f; }
             bool slow = Mathf.Abs(Vehicle.Speed) < 2f;
             Prompt = null;
             if (slow && TaskDeliverable()) { Prompt = DeliverLabel(); if (Interact()) { FinishTask(true); return; } }
             else if (slow && NearFuel(Vehicle.transform.position) && State.S.fuel < 99f) { Prompt = $"REFUEL · ₦{Data.meta.refuel:N0}"; if (Interact()) { Refuel(); return; } }
+            else if (slow && State.S.fuel <= 0.05f) { Prompt = "OUT OF FUEL · EXIT VEHICLE (OR OPEN PHONE [P] TO REFUEL)"; if (Interact()) Exit(); }
             else if (slow) { Prompt = "EXIT VEHICLE"; if (Interact()) Exit(); }
         }
 

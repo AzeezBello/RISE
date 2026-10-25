@@ -108,6 +108,7 @@ namespace Rise.World
         // The player takes this vehicle: it leaves the traffic simulation and becomes a drivable VehicleController.
         public VehicleController TakeVehicle(Vehicle v)
         {
+            if (v.t != null && !v.t.gameObject.activeSelf) v.t.gameObject.SetActive(true);
             EjectOccupants(v);
             vehicles.Remove(v);
             var vc = v.t.gameObject.AddComponent<VehicleController>();
@@ -124,7 +125,7 @@ namespace Rise.World
             Vehicle best = null; float bestD = maxDist;
             foreach (var v in vehicles)
             {
-                if (v.t == null) continue;
+                if (v.t == null || !v.t.gameObject.activeSelf) continue;
                 if (Mathf.Abs(v.t.position.y - pos.y) > 3.2f) continue;
                 Vector3 toPos = pos - v.t.position;
                 toPos.y = 0f;
@@ -143,24 +144,59 @@ namespace Rise.World
             float h = clock.Clock;
             bool bridge = data.OnBridge(r.axis, r.k, along);
             bool rush = (h >= 7f && h < 10f) || (h >= 16f && h < 19.5f);
-            if (bridge) return rush ? 0.45f : (h >= 22f || h < 5f) ? 1.3f : 1f;
+            bool lateNight = h >= 21.5f || h < 5.5f;
+            if (bridge) return rush ? 0.45f : lateNight ? 1.35f : 1f;
+            if (lateNight) return 1.25f;
             return rush && (r.cls == "highway" || r.cls == "main") ? 0.7f : 1f;
+        }
+
+        bool ShouldOperateAtHour(Vehicle v, int idx, float h)
+        {
+            // Full traffic between 06:15 and 21:00
+            if (h >= 6.25f && h < 21f) return true;
+            string id = v.cls != null ? v.cls.id : "car";
+            // Deep night (23:00–05:00): ~25% density; mostly night cars, luxury cruisers, police patrols, and occasional night transit
+            if (h >= 23f || h < 5f)
+            {
+                if (id == "lawma" || id == "brt" || id == "korope") return idx % 10 == 0;
+                if (id == "danfo" || id == "keke") return idx % 6 == 0;
+                if (id == "police" || id == "luxury") return idx % 2 == 0;
+                return idx % 4 == 0;
+            }
+            // Transition hours (21:00–23:00 and 05:00–06:15): ~50% density
+            return idx % 2 == 0;
         }
 
         void Update()
         {
             float dt = Time.deltaTime;
+            float h = clock != null ? clock.Clock : 12f;
+            bool lateNight = h >= 21.5f || h < 5.5f;
+            bool deepNight = h >= 23f || h < 5f;
             for (int i = 0; i < vehicles.Count; i++)
             {
                 var v = vehicles[i];
+                if (v.t == null) continue;
+                bool activeNow = ShouldOperateAtHour(v, i, h);
+                if (v.t.gameObject.activeSelf != activeNow)
+                {
+                    // Don't pop a vehicle in/out right in front of the player camera
+                    bool nearPlayer = PlayerObstacle != null && (v.t.position - PlayerObstacle.position).sqrMagnitude < 55f * 55f;
+                    if (!nearPlayer)
+                        v.t.gameObject.SetActive(activeNow);
+                }
+                if (!v.t.gameObject.activeSelf) continue;
+
                 float target = v.cruise * RushFactor(v.road, v.along);
                 if (Events != null && Events.InJam(v.road, v.along)) target = Mathf.Min(target, 1.6f);
                 if (Weather != null && Weather.Raining) target *= 0.7f;
                 float gap = float.MaxValue, aheadSpeed = 0f;
+                bool crossTrafficNear = false;
                 float laneAcross = v.road.k + LaneOffsetSign(v) * LaneOffset(v);
                 for (int j = 0; j < vehicles.Count; j++)
                 {
                     if (i == j) continue; var o = vehicles[j];
+                    if (o.t == null || !o.t.gameObject.activeSelf) continue;
                     if (o.road == v.road)
                     {
                         if (o.dir != v.dir || o.lane != v.lane) continue;
@@ -172,14 +208,18 @@ namespace Rise.World
                             if (effGap < gap) { gap = effGap; aheadSpeed = rawD > 0f ? o.speed : 0f; }
                         }
                     }
-                    else if (o.t != null && Mathf.Abs(o.t.position.y - v.t.position.y) < 2.5f)
+                    else if (Mathf.Abs(o.t.position.y - v.t.position.y) < 2.5f)
                     {
                         float oAlong = v.road.Along(o.t.position), oAcross = v.road.Across(o.t.position);
                         float d = (oAlong - v.along) * v.dir;
-                        float crossHalfLen = (o.cls != null ? o.cls.len * 0.5f : 2.2f) + 1.2f;
-                        if (d > 0f && d < 18f && Mathf.Abs(oAcross - laneAcross) < crossHalfLen)
+                        if (d > 0f && d < 20f && Mathf.Abs(oAcross - laneAcross) < 14f) crossTrafficNear = true;
+                        float crossHalfLen = (o.cls != null ? o.cls.len * 0.5f : 2.2f) + 0.9f;
+                        // Only yield to cross-traffic that is actively inside or closer to the junction box so perpendicular lanes never deadlock
+                        float myDistToJunc = Mathf.Abs(o.road.k - v.along);
+                        float otherDistToJunc = Mathf.Abs(v.road.k - o.along);
+                        if (d > 0f && d < 10.5f && Mathf.Abs(oAcross - laneAcross) < crossHalfLen)
                         {
-                            if (Mathf.Abs(oAcross - laneAcross) < crossHalfLen - 0.6f || o.speed > v.speed || i > j)
+                            if (otherDistToJunc + 0.5f < myDistToJunc || (Mathf.Abs(otherDistToJunc - myDistToJunc) <= 0.5f && i > j))
                             {
                                 gap = Mathf.Min(gap, Mathf.Max(0.5f, d - (o.cls != null ? o.cls.wid * 0.5f : 1f)));
                                 aheadSpeed = 0f;
@@ -194,8 +234,8 @@ namespace Rise.World
                     float d = (pAlong - v.along) * v.dir - v.cls.len * 0.5f;
                     if (d > -3.5f && d < 16f && Mathf.Abs(pAcross - laneAcross) < 3.8f && Mathf.Abs(PlayerObstacle.position.y - v.t.position.y) < 3f) { gap = Mathf.Min(gap, Mathf.Max(0.5f, d)); aheadSpeed = 0f; }
                 }
-                // Red or amber light at the next junction ahead: stop short of it unless already inside.
-                if (Lights != null)
+                // Red or amber light at the next junction ahead: stop short of it unless already inside (or deep night with clear cross-road).
+                if (Lights != null && !(deepNight && !crossTrafficNear))
                 {
                     string light = Lights.LightFor(v.road.axis);
                     if (light != "green")
@@ -216,11 +256,12 @@ namespace Rise.World
                 v.along += v.dir * v.speed * dt;
                 if (v.dir > 0 && v.along > v.road.to - 4f) v.along = v.road.from + 4f;
                 if (v.dir < 0 && v.along < v.road.from + 4f) v.along = v.road.to - 4f;
-                if (PlayerObstacle != null && (i + Time.frameCount) % 30 == 0)
+                // Only funnel distant vehicles toward the player during daytime hours; at night let traffic stay sparse across the city
+                if (!lateNight && PlayerObstacle != null && (i + Time.frameCount) % 60 == 0)
                 {
                     var pPos = PlayerObstacle.position;
                     float distSq = (v.t.position - pPos).sqrMagnitude;
-                    if (distSq > 420f * 420f)
+                    if (distSq > 450f * 450f)
                         TryRelocateNearPlayer(v, pPos, i);
                 }
                 if (v.wheels != null) foreach (var w in v.wheels) VehicleBodies.Spin(w, v.speed * dt * 120f);

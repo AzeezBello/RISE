@@ -238,9 +238,47 @@ namespace Rise.UI
 
         // ---- the HUD ----
 
+        float mapCanvasZoom = 340f;
+
+        void DrawLine2D(Vector2 a, Vector2 b, float thickness, Color c)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            Vector2 d = b - a;
+            float len = d.magnitude;
+            if (len < 0.5f) return;
+            float angle = Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg;
+            var oldMat = GUI.matrix;
+            var oldCol = GUI.color;
+            GUIUtility.RotateAroundPivot(angle, a);
+            GUI.color = oldCol * c;
+            GUI.DrawTexture(new Rect(a.x, a.y - thickness * 0.5f, len, thickness), Texture2D.whiteTexture);
+            GUI.color = oldCol;
+            GUI.matrix = oldMat;
+        }
+
+        bool ClickButton(Rect r, string label, Color bgTint, Color textTint, float s)
+        {
+            var e = Event.current;
+            bool hover = r.Contains(e.mousePosition);
+            Box(r, rPill, hover ? A(bgTint, Mathf.Min(1f, bgTint.a + 0.16f)) : bgTint);
+            Label(r, label, pillText, textTint);
+            if (e.type == EventType.MouseDown && e.button == 0 && hover)
+            {
+                e.Use();
+                return true;
+            }
+            return false;
+        }
+
         void OnGUI()
         {
             if (data == null || session == null) return;
+            ThirdPersonCamera.KeepCursorUnlocked = session.ActiveMenu != null || session.Paused || session.ChatOpen;
+            if (ThirdPersonCamera.KeepCursorUnlocked && Cursor.lockState == CursorLockMode.Locked)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
             float s = Scale;
             if (!Mathf.Approximately(s, builtScale) || panel == null || panel.normal.background == null) Build(s);
             GUI.skin.settings.cursorColor = Green; GUI.skin.settings.selectionColor = A(Green, 0.35f);
@@ -265,7 +303,15 @@ namespace Rise.UI
             if (session.Racing) topY = DrawNfsRaceBanner(s, W, topY) + 8f * s;
             if (session.Working != null) DrawShift(s, W, H);
             DrawToasts(s, W, topY);
-            if (session.ActiveMenu != null) DrawMenu(session.ActiveMenu, s, W, H);
+            if (session.ActiveMenu != null)
+            {
+                if (session.ActiveMenu.Title == "Map · GPS")
+                    DrawInteractiveMapMenu(session.ActiveMenu, s, W, H);
+                else if (session.PhoneOpen)
+                    DrawPhone(session.ActiveMenu, s, W, H);
+                else
+                    DrawMenu(session.ActiveMenu, s, W, H);
+            }
             DrawLoadingSplash(s, W, H);
         }
 
@@ -343,13 +389,13 @@ namespace Rise.UI
             if (!string.IsNullOrEmpty(street)) Label(new Rect(x, y, iw, LH(small)), street, small);
         }
 
-        // Top-right: clock with day/night, full calendar date (starting Fri, Jan 1, 1999) + day number and weather, historic era/news ticker, heat pips, network status.
+        // Top-right: clock with day/night, full calendar date (starting Fri, Jan 1, 1999) + day number, Nigerian season & weather, historic era/news ticker, heat pips, network status, and Pause/Map/Phone buttons.
         void DrawClock(float s, float W, float m, int heat)
         {
-            float pad = 12f * s, w = 276f * s;
+            float pad = 12f * s, w = 292f * s;
             var hist = session.Events != null ? session.Events.ActiveHistoricEvent : null;
             bool weatherRow = true, eraRow = hist != null, heatRow = heat > 0, netRow = session.Players != null;
-            float h = pad * 2f + LH(big) + LH(small) + (eraRow ? 22f * s : 0f) + (heatRow ? 22f * s : 0f) + (netRow ? 20f * s : 0f);
+            float h = pad * 2f + LH(big) + LH(small) + 22f * s + (eraRow ? 22f * s : 0f) + (heatRow ? 22f * s : 0f) + (netRow ? 20f * s : 0f);
             var r = new Rect(W - m - w, m, w, h);
             Box(r, panel, Color.white);
             float x = r.x + pad, y = r.y + pad, iw = w - pad * 2f;
@@ -362,14 +408,18 @@ namespace Rise.UI
             {
                 string day = $"{clock.DateText} · Day {clock.Day}";
                 Label(new Rect(x, y, iw, LH(small)), day, small);
+                y += LH(small) + 2f * s;
                 var wx = session.Weather;
-                string tag = wx == null ? null : wx.Raining ? (wx.Storm ? "STORM" : "RAIN") : wx.Harmattan ? "HARMATTAN" : null;
-                if (tag != null) Pill(x + TW(small, day) + 8f * s, y + (LH(small) - 18f * s) * 0.5f, tag, tag == "HARMATTAN" ? Gold : Blue, s);
-                y += LH(small);
+                string seasonLabel = wx != null ? wx.ActiveSeasonLabel : clock.SeasonLabel;
+                bool isWetSeason = seasonLabel.Contains("RAIN") || seasonLabel.Contains("WET");
+                float sw = Pill(x, y, seasonLabel, isWetSeason ? Blue : Gold, s);
+                string wxTag = wx == null ? null : wx.Raining ? (wx.Storm ? "STORM" : "RAINING") : null;
+                if (wxTag != null) Pill(x + sw + 6f * s, y, wxTag, Blue, s);
+                y += 20f * s;
             }
             if (eraRow)
             {
-                y += 3f * s;
+                y += 2f * s;
                 Color badgeCol = hist.Category == "pandemic" ? Red : hist.Category == "election" ? Green : Gold;
                 float bw = Pill(x, y, hist.Category.ToUpperInvariant(), badgeCol, s);
                 Label(new Rect(x + bw + 6f * s, y, iw - bw - 6f * s, 18f * s), hist.Title, smallClip);
@@ -393,30 +443,198 @@ namespace Rise.UI
                 Tex(new Rect(x, y + 5f * s, 7f * s, 7f * s), disc, dot);
                 Label(new Rect(x + 13f * s, y, iw - 13f * s, 17f * s), status, small);
             }
+
+            // Quick-access HUD Control Bar right below the Clock Card: [ || PAUSE ], [ M · MAP ], [ P · PHONE ]
+            float btnY = r.yMax + 6f * s, btnH = 24f * s, gap = 6f * s;
+            float btnW = (w - gap * 2f) / 3f;
+            var pauseRect = new Rect(r.x, btnY, btnW, btnH);
+            var mapRect = new Rect(r.x + btnW + gap, btnY, btnW, btnH);
+            var phoneRect = new Rect(r.x + (btnW + gap) * 2f, btnY, btnW, btnH);
+            if (ClickButton(pauseRect, session.Paused ? "▶ RESUME" : "|| PAUSE", A(Ink, 0.88f), Gold, s))
+                session.TogglePauseMenu();
+            if (ClickButton(mapRect, "M · GPS MAP", A(Ink, 0.88f), Green, s))
+            {
+                session.SetPaused(false);
+                session.PhoneOpen = true;
+                session.AppMap("");
+            }
+            if (ClickButton(phoneRect, "P · PHONE", A(Ink, 0.88f), Blue, s))
+            {
+                session.SetPaused(false);
+                session.OpenPhone();
+            }
         }
 
-        // Bottom-left: north-up minimap with the player's heading.
+        // Bottom-left: north-up minimap with high-contrast vector road grid, live GPS route polyline, POI blips, edge-clamped target indicator, and turn-by-turn GPS bar.
         float DrawMinimap(float s, float H, float m)
         {
             float size = 180f * s;
             var r = new Rect(m, H - m - size, size, size);
-            if (minimap == null || minimap.Texture == null) return r.yMax;
             float inset = 5f * s;
             Box(new Rect(r.x - inset, r.y - inset, r.width + inset * 2f, r.height + inset * 2f), panel, Color.white);
-            if (Event.current.type == EventType.Repaint) GUI.DrawTexture(r, minimap.Texture, ScaleMode.StretchToFill, false);
-            // Heading arrow: yaw is clockwise from north, which IMGUI's rotation also is.
+            if (minimap != null && minimap.Texture != null && Event.current.type == EventType.Repaint)
+                GUI.DrawTexture(r, minimap.Texture, ScaleMode.StretchToFill, false);
+            else
+                Box(r, rSmall, Hex(0x0A1412, 0.96f));
+
             var focus = session.Vehicle != null ? session.Vehicle.transform : session.Player.transform;
+            Vector3 centerPos = focus.position;
+            float viewRadius = minimap != null ? Mathf.Max(20f, minimap.Size) : 75f;
+
+            Vector2 WorldToMinimap(Vector3 wp)
+            {
+                float nx = (wp.x - centerPos.x) / (viewRadius * 2f);
+                float nz = (wp.z - centerPos.z) / (viewRadius * 2f);
+                return new Vector2(r.center.x + nx * r.width, r.center.y - nz * r.height);
+            }
+
+            if (Event.current.type == EventType.Repaint && !session.InInterior)
+            {
+                GUI.BeginClip(r);
+                Vector2 localCenter = new Vector2(r.width * 0.5f, r.height * 0.5f);
+                Vector2 ToLocal(Vector3 wp)
+                {
+                    float nx = (wp.x - centerPos.x) / (viewRadius * 2f);
+                    float nz = (wp.z - centerPos.z) / (viewRadius * 2f);
+                    return new Vector2(localCenter.x + nx * r.width, localCenter.y - nz * r.height);
+                }
+
+                // 1. High-contrast vector road overlay so roads are crystal clear day & night
+                if (data.roads != null)
+                {
+                    Color roadFill = new Color(0.24f, 0.31f, 0.36f, 0.62f);
+                    Color roadCenter = new Color(0.55f, 0.66f, 0.72f, 0.35f);
+                    foreach (var rd in data.roads)
+                    {
+                        Vector3 p0 = rd.Horizontal ? WorldData.W(rd.from, 0f, rd.k) : WorldData.W(rd.k, 0f, rd.from);
+                        Vector3 p1 = rd.Horizontal ? WorldData.W(rd.to, 0f, rd.k) : WorldData.W(rd.k, 0f, rd.to);
+                        Vector2 ptA = ToLocal(p0), ptB = ToLocal(p1);
+                        float xMin = Mathf.Min(ptA.x, ptB.x), xMax = Mathf.Max(ptA.x, ptB.x);
+                        float yMin = Mathf.Min(ptA.y, ptB.y), yMax = Mathf.Max(ptA.y, ptB.y);
+                        if (xMax < -10f || xMin > r.width + 10f || yMax < -10f || yMin > r.height + 10f) continue;
+                        float rw = Mathf.Clamp((rd.width / (viewRadius * 2f)) * r.width, 2.5f * s, 10f * s);
+                        if (Mathf.Abs(ptA.x - ptB.x) < 1f)
+                        {
+                            GUI.color = roadFill;
+                            GUI.DrawTexture(new Rect(ptA.x - rw * 0.5f, yMin, rw, yMax - yMin), Texture2D.whiteTexture);
+                            GUI.color = roadCenter;
+                            GUI.DrawTexture(new Rect(ptA.x - 0.6f, yMin, 1.2f, yMax - yMin), Texture2D.whiteTexture);
+                        }
+                        else
+                        {
+                            GUI.color = roadFill;
+                            GUI.DrawTexture(new Rect(xMin, ptA.y - rw * 0.5f, xMax - xMin, rw), Texture2D.whiteTexture);
+                            GUI.color = roadCenter;
+                            GUI.DrawTexture(new Rect(xMin, ptA.y - 0.6f, xMax - xMin, 1.2f), Texture2D.whiteTexture);
+                        }
+                    }
+                    GUI.color = Color.white;
+                }
+
+                // 2. Live GPS Route Polyline on Minimap
+                if (session.Nav != null && session.Nav.Target != null && session.Nav.CurrentRoute != null && session.Nav.CurrentRoute.Count > 1)
+                {
+                    var rt = session.Nav.CurrentRoute;
+                    Color routeOuter = new Color(0.0f, 0.90f, 1.0f, 0.95f);
+                    Color routeInner = new Color(1.0f, 0.90f, 0.20f, 0.95f);
+                    for (int i = 1; i < rt.Count; i++)
+                    {
+                        Vector2 pA = ToLocal(rt[i - 1]), pB = ToLocal(rt[i]);
+                        if ((pA.x < -30f && pB.x < -30f) || (pA.x > r.width + 30f && pB.x > r.width + 30f) ||
+                            (pA.y < -30f && pB.y < -30f) || (pA.y > r.height + 30f && pB.y > r.height + 30f))
+                            continue;
+                        DrawLine2D(pA, pB, 4.2f * s, routeOuter);
+                        DrawLine2D(pA, pB, 1.8f * s, routeInner);
+                    }
+                }
+
+                // 3. Nearby POI Blips (Fuel, Ladipo Garage, Contacts, Owned Vehicles)
+                if (data.TryPlace("fuel", out var fuelLm))
+                {
+                    Vector2 fp = ToLocal(fuelLm.World());
+                    if (fp.x >= 4f && fp.x <= r.width - 4f && fp.y >= 4f && fp.y <= r.height - 4f)
+                        Tex(new Rect(fp.x - 4.5f * s, fp.y - 4.5f * s, 9f * s, 9f * s), disc, Gold);
+                }
+                if (data.TryPlace("ladipo", out var ladLm))
+                {
+                    Vector2 lp = ToLocal(ladLm.World());
+                    if (lp.x >= 4f && lp.x <= r.width - 4f && lp.y >= 4f && lp.y <= r.height - 4f)
+                        Tex(new Rect(lp.x - 4.5f * s, lp.y - 4.5f * s, 9f * s, 9f * s), disc, new Color(1f, 0.25f, 0.85f));
+                }
+                if (session.Contacts != null)
+                {
+                    foreach (var ct in session.Contacts.Contacts)
+                    {
+                        Vector2 cp = ToLocal(ct.pos);
+                        if (cp.x >= 4f && cp.x <= r.width - 4f && cp.y >= 4f && cp.y <= r.height - 4f)
+                            Tex(new Rect(cp.x - 3.2f * s, cp.y - 3.2f * s, 6.4f * s, 6.4f * s), disc, Green);
+                    }
+                }
+                foreach (var pv in session.Parked)
+                {
+                    if (pv == null || !pv.Owned || pv == session.Vehicle) continue;
+                    Vector2 vp = ToLocal(pv.transform.position);
+                    if (vp.x >= 4f && vp.x <= r.width - 4f && vp.y >= 4f && vp.y <= r.height - 4f)
+                        Tex(new Rect(vp.x - 4f * s, vp.y - 4f * s, 8f * s, 8f * s), disc, Blue);
+                }
+
+                GUI.EndClip();
+            }
+
+            // 4. Active GPS Destination Marker (inside minimap or edge-clamped directional beacon!)
+            if (session.Nav != null && session.Nav.Target.HasValue)
+            {
+                Vector2 tp = WorldToMinimap(session.Nav.Target.Value);
+                float padEdge = 8f * s;
+                float clampedX = Mathf.Clamp(tp.x, r.x + padEdge, r.xMax - padEdge);
+                float clampedY = Mathf.Clamp(tp.y, r.y + padEdge, r.yMax - padEdge);
+                float pulse = 1f + 0.22f * Mathf.Sin(Time.time * 6f);
+                float dSize = 11f * s * pulse;
+                Tex(new Rect(clampedX - dSize * 0.5f, clampedY - dSize * 0.5f, dSize, dSize), disc, new Color(0f, 0.95f, 1f, 0.95f));
+                Tex(new Rect(clampedX - 3.5f * s, clampedY - 3.5f * s, 7f * s, 7f * s), disc, Gold);
+            }
+
+            // 5. Player Heading Arrow
             float a = 20f * s; var c = r.center;
             var old = GUI.matrix;
             GUIUtility.RotateAroundPivot(focus.eulerAngles.y, c);
             Tex(new Rect(c.x - a * 0.62f, c.y - a * 0.62f, a * 1.24f, a * 1.24f), arrow, new Color(0f, 0f, 0f, 0.65f));
             Tex(new Rect(c.x - a * 0.5f, c.y - a * 0.5f, a, a), arrow, Gold);
             GUI.matrix = old;
-            // North badge on the top edge.
-            float nb = 20f * s; var nr = new Rect(r.center.x - nb * 0.5f, r.y - inset - nb * 0.5f, nb, nb);
-            Tex(nr, disc, Hex(0x060E0C, 0.95f));
-            Label(nr, "N", pillText, Text);
-            return r.y - inset;
+
+            // 6. Cardinal Compass Badges (N, E, S, W) + Zoom Controls + Click-to-open Full Map
+            float nb = 18f * s;
+            var nr = new Rect(r.center.x - nb * 0.5f, r.y - inset - nb * 0.5f, nb, nb);
+            Tex(nr, disc, Hex(0x060E0C, 0.95f)); Label(nr, "N", pillText, Gold);
+
+            var zOutRect = new Rect(r.x + 4f * s, r.yMax - 20f * s, 20f * s, 16f * s);
+            var zInRect = new Rect(r.x + 26f * s, r.yMax - 20f * s, 20f * s, 16f * s);
+            var mapBtnRect = new Rect(r.xMax - 54f * s, r.yMax - 20f * s, 50f * s, 16f * s);
+            if (minimap != null)
+            {
+                if (ClickButton(zOutRect, "-", A(Ink, 0.85f), Text, s)) minimap.Size = Mathf.Clamp(minimap.Size + 25f, 45f, 180f);
+                if (ClickButton(zInRect, "+", A(Ink, 0.85f), Text, s)) minimap.Size = Mathf.Clamp(minimap.Size - 25f, 45f, 180f);
+            }
+            if (ClickButton(mapBtnRect, "MAP [M]", A(Ink, 0.88f), Green, s) ||
+                (Event.current.type == EventType.MouseDown && Event.current.button == 0 && r.Contains(Event.current.mousePosition)))
+            {
+                if (Event.current.type == EventType.MouseDown) Event.current.Use();
+                session.PhoneOpen = true;
+                session.AppMap("");
+            }
+
+            float topEdge = r.y - inset;
+            // 7. Turn-by-Turn GPS Strip directly above the minimap when navigating
+            if (session.Nav != null && session.Nav.Target.HasValue && !string.IsNullOrEmpty(session.Nav.NextTurnInstruction))
+            {
+                float gpsH = 26f * s;
+                var gpsRect = new Rect(r.x - inset, topEdge - 6f * s - gpsH, r.width + inset * 2f, gpsH);
+                Box(gpsRect, panel, new Color(0.04f, 0.14f, 0.18f, 0.95f));
+                string turnLine = $"{session.Nav.NextTurnSymbol} {Distance(session.Nav.NextTurnDistance)} · {session.Nav.NextTurnInstruction}";
+                Label(new Rect(gpsRect.x + 8f * s, gpsRect.y, gpsRect.width - 16f * s, gpsH), turnLine, smallClip, Color.cyan);
+                topEdge = gpsRect.y;
+            }
+            return topEdge;
         }
 
         // Above the minimap: mission title, objective, route distance, what you carry, crew pins.
@@ -439,7 +657,14 @@ namespace Rise.UI
             Label(new Rect(x, y, iw, LH(overline)), "OBJECTIVE", overline, Green); y += LH(overline);
             Label(new Rect(x, y, iw, LH(heading)), ttl, heading); y += LH(heading);
             if (objH > 0f) { Label(new Rect(x, y, iw, objH), obj, bodyWrap); y += objH; }
-            if (route) { y += 6f * s; Pill(x, y, Distance(session.Nav.RouteLength) + " AWAY", Green, s); y += 18f * s; }
+            if (route)
+            {
+                y += 6f * s;
+                float dw = Pill(x, y, Distance(session.Nav.RouteLength) + " AWAY", Green, s);
+                int etaMin = Mathf.Max(1, Mathf.CeilToInt(session.Nav.EtaSeconds / 60f));
+                Pill(x + dw + 6f * s, y, $"ETA ~{etaMin}m", Blue, s);
+                y += 18f * s;
+            }
             if (extraH > 0f) { y += 4f * s; Label(new Rect(x, y, iw, extraH), extra, smallWrap); }
         }
 
@@ -478,26 +703,32 @@ namespace Rise.UI
                 if (Event.current.type == EventType.Repaint) GUI.DrawTexture(new Rect(pr.x + inset, pr.y + inset, ps - inset * 2f, ps - inset * 2f), Portrait.Texture, ScaleMode.ScaleAndCrop, false);
             }
 
-            // Driving cluster above the wallet (with NFS Gear & NOS Nitrous Gauge).
+            // Driving cluster above the wallet (NOS Nitrous Gauge shown ONLY on Premium Racing Cars & Custom-Built NOS Cars).
             var v = session.Vehicle;
             if (v != null)
             {
-                float ch = 104f * s; var cr = new Rect(r.x, r.y - 10f * s - ch, w, ch);
+                bool hasNos = v.HasNos;
+                float ch = hasNos ? 104f * s : 84f * s;
+                var cr = new Rect(r.x, r.y - 10f * s - ch, w, ch);
                 Box(cr, panel, Color.white);
                 float cx = cr.x + pad, cy = cr.y + 10f * s;
                 string kmh = $"{v.Kmh:0}";
                 Label(new Rect(cx, cy, 100f * s, LH(huge)), kmh, huge);
                 Label(new Rect(cx + TW(huge, kmh) + 6f * s, cy + LH(huge) - LH(small) - 6f * s, 50f * s, LH(small)), "km/h", small);
                 int gear = v.Speed < -0.5f ? 0 : Mathf.Clamp(1 + Mathf.FloorToInt(v.Kmh / 24f), 1, 6);
-                string gearLabel = gear == 0 ? "REV" : $"GEAR {gear}";
-                Pill(cx, cy + LH(huge) + 4f * s, session.NosActive ? "NOS BOOST!" : gearLabel, session.NosActive ? Blue : Gold, s);
+                string gearLabel = st.fuel <= 0.05f ? "NO FUEL" : gear == 0 ? "REV" : $"GEAR {gear}";
+                Pill(cx, cy + LH(huge) + 4f * s, session.NosActive ? "NOS BOOST!" : gearLabel, st.fuel <= 0.05f ? Red : session.NosActive ? Blue : Gold, s);
 
                 float bx = cr.x + 128f * s, bw = cr.xMax - pad - bx, by = cr.y + 10f * s;
                 float fuel = st.fuel, cond = v.Condition, nos = session.NosCharge;
-                Label(new Rect(bx, by, bw, 14f * s), "NOS NITROUS", overline, Blue); Label(new Rect(bx, by, bw, 14f * s), $"{nos:0}%", smallRight);
-                Bar(new Rect(bx, by + 15f * s, bw, 6f * s), nos / 100f, session.NosActive ? Color.cyan : Blue);
-                by += 27f * s;
-                Label(new Rect(bx, by, bw, 14f * s), "FUEL", overline); Label(new Rect(bx, by, bw, 14f * s), $"{fuel:0}%", smallRight);
+                if (hasNos)
+                {
+                    Label(new Rect(bx, by, bw, 14f * s), "NOS NITROUS", overline, Blue); Label(new Rect(bx, by, bw, 14f * s), $"{nos:0}%", smallRight);
+                    Bar(new Rect(bx, by + 15f * s, bw, 6f * s), nos / 100f, session.NosActive ? Color.cyan : Blue);
+                    by += 27f * s;
+                }
+                Label(new Rect(bx, by, bw, 14f * s), fuel <= 0.05f ? "FUEL (EMPTY!)" : "FUEL", overline, fuel <= 0.05f ? Red : Muted);
+                Label(new Rect(bx, by, bw, 14f * s), $"{fuel:0}%", smallRight);
                 Bar(new Rect(bx, by + 15f * s, bw, 6f * s), fuel / 100f, fuel < 15f ? Red : Gold);
                 by += 27f * s;
                 Label(new Rect(bx, by, bw, 14f * s), "CONDITION", overline); Label(new Rect(bx, by, bw, 14f * s), $"{cond:0}%", smallRight);
@@ -514,6 +745,9 @@ namespace Rise.UI
             var r = new Rect(W * 0.5f - w * 0.5f, m, w, h);
             Box(r, panel, Color.white);
             Label(r, text, stripText);
+            var pauseBtn = new Rect(r.xMax + 8f * s, m, 82f * s, h);
+            if (ClickButton(pauseBtn, session.Paused ? "▶ RESUME" : "|| PAUSE", A(Ink, 0.90f), Gold, s))
+                session.TogglePauseMenu();
             return r.yMax;
         }
 
@@ -686,7 +920,7 @@ namespace Rise.UI
             return r.yMax;
         }
 
-        // Top-centre: EA Sports FC 26 / Dream League Soccer Live Match Broadcast Scorebug & Goal Overlay.
+        // Top-centre: EA Sports FC 26 / Dream League Soccer Live Match Broadcast Scorebug, 2D Pitch Radar, Shot Power Bar & Action Controls.
         float DrawFootballBroadcastBanner(float s, float W, float H, float y)
         {
             var fm = session.ActiveFootball;
@@ -695,8 +929,8 @@ namespace Rise.UI
             int sec = Mathf.FloorToInt((fm.MatchClock - min) * 60f);
             string half = fm.MatchClock < 45f ? "1ST HALF" : fm.MatchClock <= 90f ? "2ND HALF" : "ET GOLDEN GOAL";
             string poss = fm.PlayerHasBall ? "YOU (#10)" : fm.BallCarrier != null ? $"#{fm.BallCarrier.Number} {fm.BallCarrier.Name.ToUpperInvariant()}" : "LOOSE BALL";
-            string scoreLine = $"[{session.CurrentTournamentStageLabel}]  {fm.Event.HomeTag} {fm.HomeScore} - {fm.AwayScore} {fm.Event.AwayTag}  |  {min:00}:{sec:00} ({half})  |  {poss}";
-            float maxW = Mathf.Max(280f * s, W - 640f * s);
+            string scoreLine = $"[{session.CurrentTournamentStageLabel}]  {fm.Event.HomeTag} {fm.HomeScore} - {fm.AwayScore} {fm.Event.AwayTag}  |  {min:00}:{sec:00} ({half})  |  {poss}  |  {fm.TacticLabel}";
+            float maxW = Mathf.Max(320f * s, W - 640f * s);
             float w = Mathf.Min(maxW, TW(bodyStrong, scoreLine) + 34f * s), h = 36f * s;
             var r = new Rect(W * 0.5f - w * 0.5f, y, w, h);
             Box(r, rPill, new Color(0.05f, 0.24f, 0.14f, 0.94f));
@@ -711,6 +945,67 @@ namespace Rise.UI
                 Box(cr, rPill, new Color(0.03f, 0.08f, 0.06f, 0.85f));
                 Label(cr, comm, pillText, Gold);
                 bottom = cr.yMax;
+            }
+
+            // Shot Power & Green Timed-Finishing Bar when charging or right after shooting
+            if (fm.ChargingShot || fm.LastShotQualityTimer > 0f)
+            {
+                float pwr = fm.ChargingShot ? fm.ShotPowerCharge : fm.LastShotPower;
+                float bw = 220f * s, bh = 22f * s;
+                var br = new Rect(W * 0.5f - bw * 0.5f, bottom + 4f * s, bw, bh);
+                Box(br, rSmall, new Color(0.04f, 0.07f, 0.10f, 0.92f));
+                // Sweet-spot green zone (0.53..0.88)
+                Box(new Rect(br.x + bw * 0.53f, br.y + 2f * s, bw * 0.35f, bh - 4f * s), rSmall, new Color(0.16f, 0.92f, 0.45f, 0.28f));
+                Color barCol = (pwr >= 0.53f && pwr <= 0.88f) ? Green : pwr > 0.88f ? Red : Gold;
+                Bar(new Rect(br.x + 4f * s, br.y + 4f * s, bw - 8f * s, bh - 8f * s), pwr, barCol);
+                string shotTxt = fm.ChargingShot ? $"SHOT POWER {(pwr * 100f):0}%" : fm.LastShotQualityLabel;
+                Label(br, shotTxt, stripText, Color.white);
+                bottom = br.yMax;
+            }
+
+            // 2D Mini Pitch Radar (shows all 10 players + ball in real time!)
+            float radW = 168f * s, radH = 68f * s;
+            var radRect = new Rect(W * 0.5f - radW * 0.5f, bottom + 5f * s, radW, radH);
+            Box(radRect, rSmall, new Color(0.06f, 0.28f, 0.14f, 0.88f));
+            Box(new Rect(radRect.center.x - 0.5f * s, radRect.y + 2f * s, 1f * s, radH - 4f * s), rSmall, new Color(1f, 1f, 1f, 0.25f));
+            Vector2 ToRadar(Vector3 wp)
+            {
+                float nx = Mathf.Clamp((wp.x - fm.PitchCenter.x) / 41f + 0.5f, 0.04f, 0.96f);
+                float nz = Mathf.Clamp(0.5f - (wp.z - fm.PitchCenter.z) / 28f, 0.06f, 0.94f);
+                return new Vector2(radRect.x + nx * radW, radRect.y + nz * radH);
+            }
+            foreach (var fp in fm.Players)
+            {
+                if (fp.Root == null) continue;
+                Vector2 rp = ToRadar(fp.Root.position);
+                Tex(new Rect(rp.x - 3f * s, rp.y - 3f * s, 6f * s, 6f * s), disc, fp.IsHome ? Green : Red);
+            }
+            if (session.Player != null)
+            {
+                Vector2 pp = ToRadar(session.Player.transform.position);
+                Tex(new Rect(pp.x - 4f * s, pp.y - 4f * s, 8f * s, 8f * s), disc, Gold);
+            }
+            Vector2 bp = ToRadar(fm.BallPos);
+            Tex(new Rect(bp.x - 2.5f * s, bp.y - 2.5f * s, 5f * s, 5f * s), disc, Color.white);
+            bottom = radRect.yMax;
+
+            // On-screen clickable Football Action Strip (above bottom prompt)
+            if (session.ActiveMenu == null && !session.Paused)
+            {
+                float btnW = 98f * s, btnH = 26f * s, gap = 6f * s;
+                float totalW = btnW * 4f + gap * 3f;
+                float startX = W * 0.5f - totalW * 0.5f;
+                float stripY = H - 102f * s;
+                if (ClickButton(new Rect(startX, stripY, btnW, btnH), fm.PlayerHasBall ? "PASS [E]" : "CALL PASS [E]", A(Ink, 0.88f), Green, s))
+                    session.FootballPass();
+                if (ClickButton(new Rect(startX + (btnW + gap), stripY, btnW, btnH), fm.PlayerHasBall ? "SHOOT [F]" : "TACKLE [F]", A(Ink, 0.88f), Gold, s))
+                {
+                    if (!session.FootballShoot(1.22f)) session.FootballTackle();
+                }
+                if (ClickButton(new Rect(startX + (btnW + gap) * 2f, stripY, btnW, btnH), "SKILL/CHIP [G]", A(Ink, 0.88f), Blue, s))
+                    session.FootballChip();
+                if (ClickButton(new Rect(startX + (btnW + gap) * 3f, stripY, btnW, btnH), $"TACTIC [R]", A(Ink, 0.88f), Color.cyan, s))
+                    session.CycleFootballTactic();
             }
 
             if (fm.GoalBannerTimer > 0f && !string.IsNullOrEmpty(fm.GoalBannerText))
@@ -786,6 +1081,492 @@ namespace Rise.UI
                 Label(new Rect(r.x + 30f * s, r.y + (h - th) * 0.5f, tw, th), toast.text, bodyWrap, new Color(1f, 1f, 1f, alpha));
                 y += h + 6f * s;
             }
+        }
+
+        // Smartphone UI: realistic modern mobile phone frame with Dynamic Island, 5G status bar, wallet/weather widget, and 3x4 app grid.
+        void DrawPhone(Menu menu, float s, float W, float H)
+        {
+            bool touchUi = TouchControls.Active;
+            var e = Event.current;
+            bool pointer = !touchUi && Cursor.lockState != CursorLockMode.Locked;
+            if (e.type == EventType.Repaint) Box(new Rect(0, 0, W, H), rSmall, new Color(0f, 0f, 0f, 0.35f));
+
+            float cw = Mathf.Min(396f * s, W - 24f * s);
+            float ch = Mathf.Min(720f * s, H - 20f * s);
+            var outer = new Rect(W * 0.5f - cw * 0.5f, Mathf.Max(10f * s, H * 0.5f - ch * 0.5f), cw, ch);
+
+            // Metallic titanium outer frame + dark OLED glass screen
+            Box(outer, panel, new Color(0.28f, 0.31f, 0.37f, 0.99f));
+            var bezel = new Rect(outer.x + 3f * s, outer.y + 3f * s, outer.width - 6f * s, outer.height - 6f * s);
+            Box(bezel, panel, new Color(0.03f, 0.04f, 0.06f, 0.99f));
+            var scr = new Rect(outer.x + 9f * s, outer.y + 9f * s, outer.width - 18f * s, outer.height - 18f * s);
+            Box(scr, rMid, new Color(0.06f, 0.08f, 0.13f, 0.99f));
+
+            float pad = 14f * s;
+            float x = scr.x + pad, y = scr.y + 8f * s, iw = scr.width - pad * 2f;
+
+            // Top Status Bar + Dynamic Island
+            Label(new Rect(x, y, 76f * s, 18f * s), clock != null ? clock.ClockText : "12:00", small, Color.white);
+            float islandW = 92f * s, islandH = 18f * s;
+            var island = new Rect(scr.x + (scr.width - islandW) * 0.5f, y, islandW, islandH);
+            Box(island, rPill, Color.black);
+            Tex(new Rect(island.xMax - 14f * s, island.y + 5f * s, 8f * s, 8f * s), disc, new Color(0.12f, 0.18f, 0.32f, 0.95f));
+            Label(new Rect(scr.xMax - pad - 105f * s, y, 82f * s, 18f * s), "MTN 5G  98%", smallRight, new Color(0.82f, 0.88f, 0.95f));
+            Box(new Rect(scr.xMax - pad - 18f * s, y + 4f * s, 16f * s, 10f * s), rSmall, Green);
+            y += 24f * s;
+
+            int totalOpts = menu.Options.Count;
+            if (menu.Rects.Length != totalOpts) menu.Rects = new Rect[totalOpts];
+            for (int i = 0; i < totalOpts; i++) menu.Rects[i] = default;
+
+            bool isHome = menu.Title == "Rise: Hustle or Die Trying" && menu.Fields.Count == 0 && totalOpts >= 10;
+            if (isHome)
+            {
+                // Wallpaper & Live Clock / Weather / RiseBank Widget
+                var widget = new Rect(x, y, iw, 96f * s);
+                Box(widget, rMid, new Color(0.10f, 0.15f, 0.26f, 0.95f));
+                Label(new Rect(widget.x + 12f * s, widget.y + 8f * s, widget.width - 24f * s, LH(big)), clock != null ? clock.ClockText : "12:00", big);
+                string wx = session.Weather != null && session.Weather.Raining ? "Rain" : "Clear";
+                string season = clock != null ? clock.SeasonLabel : "DRY SEASON";
+                Label(new Rect(widget.x + 12f * s, widget.y + 8f * s, widget.width - 24f * s, 18f * s), season, smallRight, Gold);
+                Label(new Rect(widget.x + 12f * s, widget.y + 42f * s, widget.width - 24f * s, 18f * s), $"{(clock != null ? clock.DateText : "Lagos")}  ·  {wx}", small, new Color(0.80f, 0.86f, 0.94f));
+                var st = session.State.S;
+                var balPill = new Rect(widget.x + 10f * s, widget.yMax - 28f * s, widget.width - 20f * s, 22f * s);
+                Box(balPill, rSmall, new Color(0.04f, 0.07f, 0.12f, 0.85f));
+                Label(new Rect(balPill.x + 8f * s, balPill.y, balPill.width - 16f * s, balPill.height), $"Cash ₦{st.cash:N0}   ·   RiseBank ₦{st.bank:N0}", stripText, Green);
+                y = widget.yMax + 12f * s;
+
+                // 3x4 Smartphone App Grid (first totalOpts - 1 options are apps; last option is Put phone away)
+                int appCount = Mathf.Min(12, totalOpts - 1);
+                int cols = 3;
+                int rows = Mathf.CeilToInt(appCount / (float)cols);
+                float gapX = 10f * s, gapY = 10f * s;
+                float cellW = (iw - gapX * (cols - 1)) / cols;
+                float availGridH = scr.yMax - y - 64f * s;
+                float cellH = Mathf.Min(86f * s, (availGridH - gapY * Mathf.Max(0, rows - 1)) / Mathf.Max(1, rows));
+
+                string[] shortNames = { "Messages", "Contacts", "RiseBank", "Homes", "Business", "Hustle", "GPS Map", "Refuel", "Flights", "Audio", "Settings", "Account" };
+                string[] badges = { "MSG", "TEL", "₦", "KEY", "BIZ", "JOB", "GPS", "FUEL", "AIR", "FM", "SET", "ID" };
+                Color[] appColors =
+                {
+                    new Color(0.16f, 0.72f, 0.42f), // Messages
+                    new Color(0.20f, 0.52f, 0.92f), // Contacts
+                    new Color(0.85f, 0.65f, 0.14f), // RiseBank
+                    new Color(0.58f, 0.34f, 0.86f), // Homes
+                    new Color(0.90f, 0.48f, 0.16f), // Business
+                    new Color(0.14f, 0.68f, 0.66f), // Hustle
+                    new Color(0.18f, 0.62f, 0.95f), // GPS Map
+                    new Color(0.92f, 0.28f, 0.24f), // Refuel
+                    new Color(0.22f, 0.74f, 0.88f), // Flights
+                    new Color(0.84f, 0.26f, 0.58f), // Audio
+                    new Color(0.42f, 0.48f, 0.56f), // Settings
+                    new Color(0.34f, 0.40f, 0.82f), // Account
+                };
+
+                for (int i = 0; i < appCount; i++)
+                {
+                    int rIdx = i / cols, cIdx = i % cols;
+                    var cell = new Rect(x + cIdx * (cellW + gapX), y + rIdx * (cellH + gapY), cellW, cellH);
+                    menu.Rects[i] = cell;
+                    var o = menu.Options[i];
+                    bool sel = i == menu.Index;
+                    bool hover = pointer && o.Enabled && cell.Contains(e.mousePosition);
+
+                    if (sel || hover)
+                        Box(cell, rMid, sel ? A(Green, 0.22f) : new Color(1f, 1f, 1f, 0.08f));
+
+                    float iconSz = Mathf.Min(44f * s, cellH - 24f * s);
+                    var iconRect = new Rect(cell.x + (cell.width - iconSz) * 0.5f, cell.y + 4f * s, iconSz, iconSz);
+                    Box(iconRect, rMid, appColors[i % appColors.Length]);
+                    Label(iconRect, badges[i % badges.Length], stripText, Color.white);
+
+                    // Key shortcut badge in corner
+                    if (i < 9)
+                    {
+                        var kb = new Rect(iconRect.xMax - 14f * s, iconRect.y - 2f * s, 16f * s, 15f * s);
+                        Box(kb, rSmall, new Color(0f, 0f, 0f, 0.75f));
+                        Label(kb, (i + 1).ToString(), stripText, Gold);
+                    }
+
+                    string appTitle = i < shortNames.Length ? shortNames[i] : o.Label;
+                    var lblRect = new Rect(cell.x + 2f * s, iconRect.yMax + 2f * s, cell.width - 4f * s, 18f * s);
+                    Label(lblRect, appTitle, stripText, sel ? Green : Color.white);
+
+                    if (pointer && o.Enabled && e.type == EventType.MouseDown && e.button == 0 && cell.Contains(e.mousePosition))
+                    {
+                        e.Use();
+                        session.Choose(i);
+                        return;
+                    }
+                }
+
+                // Bottom Dock: Put Phone Away button
+                int closeIdx = totalOpts - 1;
+                var dockBtn = new Rect(x, scr.yMax - 48f * s, iw, 30f * s);
+                menu.Rects[closeIdx] = dockBtn;
+                bool closeSel = menu.Index == closeIdx;
+                bool closeHover = pointer && dockBtn.Contains(e.mousePosition);
+                Box(dockBtn, rPill, closeSel ? A(Red, 0.35f) : closeHover ? new Color(1f, 1f, 1f, 0.14f) : new Color(1f, 1f, 1f, 0.08f));
+                Label(dockBtn, "Lock & Put Phone Away  [P / X]", stripText, closeSel ? Gold : new Color(0.85f, 0.90f, 0.96f));
+                if (pointer && e.type == EventType.MouseDown && e.button == 0 && dockBtn.Contains(e.mousePosition))
+                {
+                    e.Use();
+                    session.Choose(closeIdx);
+                    return;
+                }
+            }
+            else
+            {
+                // Inside a Phone App Sub-Page
+                var navBar = new Rect(x, y, iw, 30f * s);
+                var homeBtn = new Rect(x, y + 2f * s, 68f * s, 26f * s);
+                Box(homeBtn, rPill, new Color(0.14f, 0.20f, 0.32f, 0.95f));
+                Label(homeBtn, "‹ Home", stripText, Blue);
+                if (pointer && e.type == EventType.MouseDown && e.button == 0 && homeBtn.Contains(e.mousePosition))
+                {
+                    e.Use();
+                    session.OpenPhone();
+                    return;
+                }
+                Label(new Rect(homeBtn.xMax + 8f * s, y + 2f * s, iw - 76f * s, 26f * s), menu.Title, bodyStrongClip, Color.white);
+                y += 32f * s;
+
+                if (!string.IsNullOrEmpty(menu.Subtitle))
+                {
+                    float subH = Mathf.Min(36f * s, TH(smallWrap, menu.Subtitle, iw));
+                    Label(new Rect(x, y, iw, subH), menu.Subtitle, smallWrap, new Color(0.75f, 0.82f, 0.92f));
+                    y += subH + 4f * s;
+                }
+
+                if (!string.IsNullOrEmpty(menu.Line))
+                {
+                    float qH = Mathf.Min(84f * s, TH(bodyWrap, menu.Line, iw - 16f * s) + 12f * s);
+                    var bubble = new Rect(x, y, iw, qH);
+                    Box(bubble, rMid, new Color(0.12f, 0.22f, 0.36f, 0.92f));
+                    Label(new Rect(bubble.x + 8f * s, bubble.y + 6f * s, bubble.width - 16f * s, qH - 12f * s), menu.Line, bodyWrap, Color.white);
+                    y += qH + 6f * s;
+                }
+
+                float fieldH = 30f * s;
+                for (int f = 0; f < menu.Fields.Count; f++)
+                {
+                    var fd = menu.Fields[f];
+                    Label(new Rect(x, y, 88f * s, fieldH), fd.Label, small);
+                    var fr = new Rect(x + 88f * s, y, iw - 88f * s, fieldH);
+                    GUI.SetNextControlName("field" + f);
+                    fd.Value = fd.Password ? GUI.PasswordField(fr, fd.Value ?? "", '•', 64, field) : GUI.TextField(fr, fd.Value ?? "", 64, field);
+                    y += fieldH + 6f * s;
+                }
+                if (menu.Fields.Count > 0 && Cursor.lockState == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+                session.Typing = menu.Fields.Count > 0 && GUI.GetNameOfFocusedControl().StartsWith("field");
+
+                float rowH = 32f * s, rowGap = 4f * s;
+                float availH = scr.yMax - y - 28f * s;
+                int maxVis = Mathf.Max(3, Mathf.FloorToInt((availH + rowGap) / (rowH + rowGap)));
+                int visCount = Mathf.Min(totalOpts, maxVis);
+                int startIdx = totalOpts > visCount ? Mathf.Clamp(menu.Index - visCount / 2, 0, totalOpts - visCount) : 0;
+                int endIdx = Mathf.Min(totalOpts, startIdx + visCount);
+
+                for (int i = startIdx; i < endIdx; i++)
+                {
+                    var o = menu.Options[i];
+                    var row = new Rect(x, y, iw, rowH);
+                    menu.Rects[i] = row;
+                    bool sel = i == menu.Index;
+                    bool hover = pointer && o.Enabled && row.Contains(e.mousePosition);
+                    Box(row, rMid, sel ? A(Green, 0.20f) : hover ? new Color(1f, 1f, 1f, 0.10f) : new Color(1f, 1f, 1f, 0.04f));
+                    if (sel) Box(new Rect(row.x, row.y + 5f * s, 3f * s, rowH - 10f * s), rSmall, Green);
+                    Label(new Rect(row.x + 10f * s, row.y, row.width - 16f * s, rowH), o.Label, !o.Enabled ? bodyMutedClip : sel ? bodyStrongClip : bodyClip);
+                    if (pointer && o.Enabled && e.type == EventType.MouseDown && e.button == 0 && row.Contains(e.mousePosition))
+                    {
+                        e.Use();
+                        session.Choose(i);
+                        return;
+                    }
+                    y += rowH + rowGap;
+                }
+            }
+
+            // Bottom iOS/Android Home Indicator Pill
+            var homeBar = new Rect(scr.x + (scr.width - 110f * s) * 0.5f, scr.yMax - 12f * s, 110f * s, 5f * s);
+            Box(homeBar, rPill, new Color(1f, 1f, 1f, 0.45f));
+        }
+
+        // Full-Screen Split Interactive GPS Map & Navigation Console
+        void DrawInteractiveMapMenu(Menu menu, float s, float W, float H)
+        {
+            bool touchUi = TouchControls.Active;
+            var e = Event.current;
+            bool pointer = !touchUi && Cursor.lockState != CursorLockMode.Locked;
+            if (e.type == EventType.Repaint) Box(new Rect(0, 0, W, H), rSmall, new Color(0f, 0f, 0f, 0.45f));
+
+            float pad = 16f * s;
+            float cw = Mathf.Min(1080f * s, W - 24f * s);
+            float ch = Mathf.Min(680f * s, H - 24f * s);
+            var card = new Rect(W * 0.5f - cw * 0.5f, Mathf.Max(12f * s, H * 0.5f - ch * 0.5f), cw, ch);
+            Box(card, panel, Color.white);
+
+            float mapW = Mathf.Floor(cw * 0.54f);
+            var mapRect = new Rect(card.x + pad, card.y + pad, mapW, ch - pad * 2f);
+            Box(mapRect, rMid, new Color(0.05f, 0.09f, 0.15f, 0.98f));
+
+            // Map world coordinate conversion (-1650..1650)
+            float worldSpan = 3300f / Mathf.Clamp(mapCanvasZoom, 0.55f, 2.5f);
+            Vector3 pPos = session.Player != null ? session.Player.transform.position : Vector3.zero;
+            Vector2 centerXZ = new Vector2(Mathf.Clamp(pPos.x, -600f, 600f), Mathf.Clamp(pPos.z, -600f, 600f));
+
+            Vector2 WorldToMap(Vector3 wPos)
+            {
+                float nx = 0.5f + (wPos.x - centerXZ.x) / worldSpan;
+                float ny = 0.5f - (wPos.z - centerXZ.y) / worldSpan;
+                return new Vector2(mapRect.x + nx * mapRect.width, mapRect.y + ny * mapRect.height);
+            }
+
+            Vector3 MapToWorld(Vector2 mPos)
+            {
+                float nx = (mPos.x - mapRect.x) / mapRect.width - 0.5f;
+                float ny = 0.5f - (mPos.y - mapRect.y) / mapRect.height;
+                return new Vector3(centerXZ.x + nx * worldSpan, 0f, centerXZ.y + ny * worldSpan);
+            }
+
+            GUI.BeginGroup(mapRect);
+            var localRect = new Rect(0, 0, mapRect.width, mapRect.height);
+
+            // Subtle satellite grid lines
+            for (int g = 1; g < 8; g++)
+            {
+                float gx = localRect.width * (g / 8f);
+                float gy = localRect.height * (g / 8f);
+                Box(new Rect(gx, 0, 1f, localRect.height), rSmall, new Color(1f, 1f, 1f, 0.04f));
+                Box(new Rect(0, gy, localRect.width, 1f), rSmall, new Color(1f, 1f, 1f, 0.04f));
+            }
+
+            // Roads network
+            if (session.Data != null && session.Data.roads != null)
+            {
+                Color roadFill = new Color(0.24f, 0.30f, 0.40f, 0.90f);
+                foreach (var rd in session.Data.roads)
+                {
+                    Vector3 p0 = rd.Horizontal ? WorldData.W(rd.from, 0f, rd.k) : WorldData.W(rd.k, 0f, rd.from);
+                    Vector3 p1 = rd.Horizontal ? WorldData.W(rd.to, 0f, rd.k) : WorldData.W(rd.k, 0f, rd.to);
+                    Vector2 a = WorldToMap(p0) - mapRect.position;
+                    Vector2 b = WorldToMap(p1) - mapRect.position;
+                    float minX = Mathf.Min(a.x, b.x), maxX = Mathf.Max(a.x, b.x);
+                    float minY = Mathf.Min(a.y, b.y), maxY = Mathf.Max(a.y, b.y);
+                    float thick = Mathf.Max(3f * s, rd.width * 0.16f * s);
+                    if (Mathf.Abs(a.x - b.x) < 2f)
+                        Box(new Rect(a.x - thick * 0.5f, minY, thick, Mathf.Max(2f, maxY - minY)), rSmall, roadFill);
+                    else if (Mathf.Abs(a.y - b.y) < 2f)
+                        Box(new Rect(minX, a.y - thick * 0.5f, Mathf.Max(2f, maxX - minX), thick), rSmall, roadFill);
+                    else
+                    {
+                        int steps = 16;
+                        for (int k = 0; k <= steps; k++)
+                        {
+                            Vector2 pt = Vector2.Lerp(a, b, k / (float)steps);
+                            Box(new Rect(pt.x - thick * 0.5f, pt.y - thick * 0.5f, thick, thick), rSmall, roadFill);
+                        }
+                    }
+                }
+            }
+
+            // Active GPS Route Polyline
+            if (session.Nav != null && session.Nav.Target.HasValue && session.Nav.CurrentRoute != null)
+            {
+                var route = session.Nav.CurrentRoute;
+                for (int r = 0; r < route.Count - 1; r++)
+                {
+                    Vector2 a = WorldToMap(route[r]) - mapRect.position;
+                    Vector2 b = WorldToMap(route[r + 1]) - mapRect.position;
+                    float dist = Vector2.Distance(a, b);
+                    int steps = Mathf.Clamp(Mathf.CeilToInt(dist / (4f * s)), 1, 45);
+                    for (int k = 0; k <= steps; k++)
+                    {
+                        Vector2 pt = Vector2.Lerp(a, b, k / (float)steps);
+                        Tex(new Rect(pt.x - 3f * s, pt.y - 3f * s, 6f * s, 6f * s), disc, new Color(0.15f, 0.92f, 1f, 0.95f));
+                    }
+                }
+            }
+
+            // Landmarks & Places
+            if (session.Data != null && session.Data.landmarks != null)
+            {
+                foreach (var pl in session.Data.landmarks)
+                {
+                    Vector2 mp = WorldToMap(pl.World()) - mapRect.position;
+                    if (mp.x < 6f || mp.x > localRect.width - 6f || mp.y < 6f || mp.y > localRect.height - 6f) continue;
+                    Color pc = pl.id == "fuel" ? Gold : pl.id == "ladipo" ? new Color(0.95f, 0.35f, 0.85f) : pl.id == "airport" ? Blue : new Color(0.75f, 0.82f, 0.92f);
+                    float sz = (pl.id == "fuel" || pl.id == "ladipo" || pl.id == "airport") ? 8f * s : 6f * s;
+                    Tex(new Rect(mp.x - sz * 0.5f, mp.y - sz * 0.5f, sz, sz), disc, pc);
+                    if (pl.id == "fuel" || pl.id == "ladipo" || pl.id == "airport" || pl.id == "cms" || pl.id == "eco_hotel" || pl.id == "pitch")
+                        Label(new Rect(mp.x + 6f * s, mp.y - 8f * s, 110f * s, 16f * s), pl.name, stripText, pc);
+                }
+            }
+
+            // Contacts
+            if (session.Contacts != null)
+            {
+                foreach (var c in session.Contacts.Contacts)
+                {
+                    Vector2 mp = WorldToMap(c.pos) - mapRect.position;
+                    if (mp.x < 6f || mp.x > localRect.width - 6f || mp.y < 6f || mp.y > localRect.height - 6f) continue;
+                    Tex(new Rect(mp.x - 4.5f * s, mp.y - 4.5f * s, 9f * s, 9f * s), disc, Gold);
+                    Label(new Rect(mp.x + 6f * s, mp.y - 8f * s, 90f * s, 16f * s), c.data.name, stripText, Gold);
+                }
+            }
+
+            // Owned Vehicles
+            foreach (var pv in session.Parked)
+            {
+                if (pv == null || !pv.Owned) continue;
+                Vector2 mp = WorldToMap(pv.transform.position) - mapRect.position;
+                if (mp.x >= 4f && mp.x <= localRect.width - 4f && mp.y >= 4f && mp.y <= localRect.height - 4f)
+                    Tex(new Rect(mp.x - 4f * s, mp.y - 4f * s, 8f * s, 8f * s), disc, Blue);
+            }
+
+            // Active GPS Target Beacon
+            string wpLabel = "Destination";
+            if (!string.IsNullOrEmpty(session.State.S.waypointId))
+                session.ResolveWaypoint(session.State.S.waypointId, out wpLabel);
+            if (session.Nav != null && session.Nav.Target.HasValue)
+            {
+                Vector2 tp = WorldToMap(session.Nav.Target.Value) - mapRect.position;
+                float pulse = 12f * s + Mathf.Sin(Time.unscaledTime * 6f) * 3f * s;
+                Tex(new Rect(tp.x - pulse * 0.5f, tp.y - pulse * 0.5f, pulse, pulse), disc, A(Green, 0.35f));
+                Tex(new Rect(tp.x - 4f * s, tp.y - 4f * s, 8f * s, 8f * s), disc, Green);
+                Label(new Rect(tp.x + 8f * s, tp.y - 9f * s, 150f * s, 18f * s), wpLabel ?? "GPS Target", stripText, Green);
+            }
+
+            // Player Marker & Heading Arrow
+            Vector2 playerMp = WorldToMap(pPos) - mapRect.position;
+            float pYaw = session.Vehicle != null ? session.Vehicle.transform.eulerAngles.y : (session.Player != null ? session.Player.transform.eulerAngles.y : 0f);
+            var mBackup = GUI.matrix;
+            GUIUtility.RotateAroundPivot(pYaw, new Vector2(mapRect.x + playerMp.x, mapRect.y + playerMp.y));
+            Tex(new Rect(playerMp.x - 9f * s, playerMp.y - 9f * s, 18f * s, 18f * s), arrow, Color.white);
+            GUI.matrix = mBackup;
+
+            // Map Header Overlay
+            var mapTop = new Rect(10f * s, 10f * s, localRect.width - 20f * s, 28f * s);
+            Box(mapTop, rPill, new Color(0.03f, 0.05f, 0.09f, 0.88f));
+            Label(new Rect(mapTop.x + 12f * s, mapTop.y, mapTop.width - 24f * s, mapTop.height), "LAGOS SATELLITE GPS  ·  CLICK ANYWHERE TO SET WAYPOINT", stripText, Blue);
+
+            // Turn-by-turn status bar at bottom of map
+            var navStrip = new Rect(10f * s, localRect.height - 38f * s, localRect.width - 96f * s, 28f * s);
+            Box(navStrip, rPill, new Color(0.03f, 0.06f, 0.11f, 0.92f));
+            string navStatus = session.Nav != null && session.Nav.Target.HasValue
+                ? $"{session.Nav.NextTurnSymbol} {session.Nav.NextTurnInstruction} ({session.Nav.NextTurnDistance:0}m)  ·  {wpLabel ?? "GPS Target"} ({session.Nav.RouteLength:0}m · ETA {session.Nav.EtaSeconds / 60}:{session.Nav.EtaSeconds % 60:00})"
+                : "No active GPS route — click any point on the map or pick a destination on the right";
+            Label(new Rect(navStrip.x + 10f * s, navStrip.y, navStrip.width - 20f * s, navStrip.height), navStatus, stripText, session.Nav != null && session.Nav.Target.HasValue ? Green : new Color(0.78f, 0.84f, 0.92f));
+
+            GUI.EndGroup();
+
+            // Zoom [-] / [+] buttons on map
+            var zMinus = new Rect(mapRect.xMax - 76f * s, mapRect.yMax - 38f * s, 30f * s, 28f * s);
+            var zPlus = new Rect(mapRect.xMax - 42f * s, mapRect.yMax - 38f * s, 30f * s, 28f * s);
+            Box(zMinus, rSmall, new Color(0.10f, 0.14f, 0.22f, 0.95f));
+            Box(zPlus, rSmall, new Color(0.10f, 0.14f, 0.22f, 0.95f));
+            Label(zMinus, "-", stripText, Color.white);
+            Label(zPlus, "+", stripText, Color.white);
+
+            if (pointer && e.type == EventType.MouseDown && e.button == 0)
+            {
+                if (zMinus.Contains(e.mousePosition))
+                {
+                    e.Use();
+                    mapCanvasZoom = Mathf.Clamp(mapCanvasZoom - 0.25f, 0.55f, 2.5f);
+                    return;
+                }
+                if (zPlus.Contains(e.mousePosition))
+                {
+                    e.Use();
+                    mapCanvasZoom = Mathf.Clamp(mapCanvasZoom + 0.25f, 0.55f, 2.5f);
+                    return;
+                }
+                if (mapRect.Contains(e.mousePosition))
+                {
+                    e.Use();
+                    Vector3 clickedWorld = MapToWorld(e.mousePosition);
+                    session.SetWaypoint($"pos:{clickedWorld.x:0}:{clickedWorld.z:0}:Map Pin ({clickedWorld.x:0}, {clickedWorld.z:0})");
+                    session.State.Toast($"GPS locked to Map Pin ({clickedWorld.x:0}, {clickedWorld.z:0})");
+                    return;
+                }
+            }
+
+            // Right Column: Search + Quick Presets + Scrollable Destinations
+            float rx = mapRect.xMax + pad;
+            float rw = card.xMax - rx - pad;
+            float ry = card.y + pad;
+
+            Label(new Rect(rx, ry, rw, LH(title)), menu.Title, title);
+            ry += LH(title);
+            if (!string.IsNullOrEmpty(menu.Subtitle))
+            {
+                float subH = TH(smallWrap, menu.Subtitle, rw);
+                Label(new Rect(rx, ry, rw, subH), menu.Subtitle, smallWrap, Gold);
+                ry += subH + 4f * s;
+            }
+            if (!string.IsNullOrEmpty(menu.Line))
+            {
+                float lineH = TH(bodyWrap, menu.Line, rw);
+                Label(new Rect(rx, ry, rw, lineH), menu.Line, bodyWrap);
+                ry += lineH + 6f * s;
+            }
+
+            float fieldH = 32f * s;
+            for (int f = 0; f < menu.Fields.Count; f++)
+            {
+                var fd = menu.Fields[f];
+                Label(new Rect(rx, ry, 76f * s, fieldH), fd.Label, small);
+                var fr = new Rect(rx + 76f * s, ry, rw - 76f * s, fieldH);
+                GUI.SetNextControlName("field" + f);
+                fd.Value = GUI.TextField(fr, fd.Value ?? "", 64, field);
+                ry += fieldH + 6f * s;
+            }
+            if (menu.Fields.Count > 0 && Cursor.lockState == CursorLockMode.Locked) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+            session.Typing = menu.Fields.Count > 0 && GUI.GetNameOfFocusedControl().StartsWith("field");
+
+            int totalOpts = menu.Options.Count;
+            if (menu.Rects.Length != totalOpts) menu.Rects = new Rect[totalOpts];
+            for (int i = 0; i < totalOpts; i++) menu.Rects[i] = default;
+
+            float baseRowH = 30f * s, rowGap = 3f * s;
+            float footerH = LH(small) + 6f * s;
+            float availOptsH = Mathf.Max(baseRowH * 4f, card.yMax - pad - ry - footerH);
+            int maxVisible = Mathf.Max(4, Mathf.FloorToInt((availOptsH + rowGap) / (baseRowH + rowGap)));
+            int visCount = Mathf.Min(totalOpts, maxVisible);
+            int startIdx = totalOpts > visCount ? Mathf.Clamp(menu.Index - visCount / 2, 0, totalOpts - visCount) : 0;
+            int endIdx = Mathf.Min(totalOpts, startIdx + visCount);
+
+            float optsTopY = ry;
+            for (int i = startIdx; i < endIdx; i++)
+            {
+                var o = menu.Options[i];
+                var row = new Rect(rx, ry, rw - 8f * s, baseRowH);
+                menu.Rects[i] = row;
+                bool sel = i == menu.Index, hover = pointer && o.Enabled && row.Contains(e.mousePosition);
+                if (sel) Box(row, rMid, A(Green, 0.16f));
+                else if (hover) Box(row, rMid, new Color(1f, 1f, 1f, 0.07f));
+                if (sel) Box(new Rect(row.x, row.y + 5f * s, 3f * s, baseRowH - 10f * s), rSmall, Green);
+                Label(new Rect(row.x + 10f * s, row.y, row.width - 16f * s, baseRowH), o.Label, !o.Enabled ? bodyMutedClip : sel ? bodyStrongClip : bodyClip);
+                if (pointer && o.Enabled && e.type == EventType.MouseDown && e.button == 0 && row.Contains(e.mousePosition))
+                {
+                    e.Use();
+                    session.Choose(i);
+                    return;
+                }
+                ry += baseRowH + rowGap;
+            }
+
+            if (totalOpts > visCount)
+            {
+                float sbX = card.xMax - pad * 0.6f, sbH = visCount * (baseRowH + rowGap) - rowGap;
+                Box(new Rect(sbX, optsTopY, 4f * s, sbH), rSmall, Track);
+                float thumbH = Mathf.Max(18f * s, sbH * ((float)visCount / totalOpts));
+                float thumbT = (float)startIdx / Mathf.Max(1, totalOpts - visCount);
+                Box(new Rect(sbX, optsTopY + (sbH - thumbH) * thumbT, 4f * s, thumbH), rSmall, Gold);
+            }
+
+            Label(new Rect(rx, card.yMax - pad - LH(small), rw, LH(small)), "Click map to drop pin  ·  W/S or Scroll list  ·  Enter lock GPS  ·  X close", smallClip);
         }
 
         // Centre: the menu card (dialogue, agent, home, business, bus stop, kiosk, police, sign-in) with viewport-clamped auto-scrolling.

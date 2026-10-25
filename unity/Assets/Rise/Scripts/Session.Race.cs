@@ -186,6 +186,11 @@ namespace Rise
                 });
             }
 
+            menu.Options.Add(new MenuOption
+            {
+                Label = "NFS Underground Tuning & Mod Garage (Performance · NOS · Aero · Paint)",
+                Action = () => OpenNfsGarageMenu(Vehicle)
+            });
             menu.Options.Add(new MenuOption { Label = "Not now", Action = null });
             OpenMenu(menu);
         }
@@ -245,16 +250,26 @@ namespace Rise
                 if (best == null && Parked.Count > 0) best = Parked[0];
                 if (best == null)
                 {
-                    var cls = Data.VehicleClass("muscle") ?? Data.VehicleClass("car");
+                    var cls = Data.VehicleClass("luxury") ?? Data.VehicleClass("car");
                     var go = VehicleBodies.Build(cls, transform, new System.Random(777), out var wheels);
                     best = go.AddComponent<VehicleController>();
                     best.Setup(cls, wheels);
-                    best.ApplyLivery(new Color(0.08f, 0.78f, 0.96f));
+                    best.NosStage = 2;
+                    best.Spoiler = 2;
+                    best.SkirtKit = 2;
+                    best.NeonColor = 0;
+                    best.ApplyLivery("#00d8ff", 2);
+                    best.RebuildNfsVisualMods();
                     Parked.Add(best);
                 }
                 Enter(best);
             }
 
+            if (!Vehicle.HasNos)
+            {
+                Vehicle.NosStage = 1;
+                Vehicle.RebuildNfsVisualMods();
+            }
             Vehicle.Condition = 100f;
             State.S.fuel = 100f;
             NosCharge = 100f;
@@ -494,11 +509,13 @@ namespace Rise
             float kmh = Vehicle.Kmh;
             float steer = Mathf.Abs(GameInput.Steer);
             bool drifting = (GameInput.Handbrake || steer > 0.65f) && speedMs > 6.5f;
+            bool hasNosSystem = Vehicle.HasNos;
+            bool hasFuel = State.S.fuel > 0.1f;
 
-            // 1. Drift Scoring & NOS Recharge
+            // 1. Drift Scoring & NOS Recharge (NOS only recharges on premium racing / custom-built NOS cars)
             if (drifting)
             {
-                NosCharge = Mathf.Min(100f, NosCharge + 18f * dt);
+                if (hasNosSystem) NosCharge = Mathf.Min(100f, NosCharge + 18f * dt);
                 if (ActiveRace != null)
                 {
                     ActiveRace.DriftChainTimer = 2.0f;
@@ -522,8 +539,17 @@ namespace Rise
                 }
             }
 
+            if (!hasNosSystem || !hasFuel)
+            {
+                if (!hasNosSystem) NosCharge = 0f;
+                NosActive = false;
+                SetNosFlamesVisible(false);
+                return;
+            }
+
             // 2. High-speed clean driving & Traffic Near-Miss NOS bonus
-            if (kmh > 65f) NosCharge = Mathf.Min(100f, NosCharge + 4.5f * dt);
+            int nosStage = Vehicle.EffectiveNosStage;
+            if (kmh > 65f) NosCharge = Mathf.Min(100f, NosCharge + (4.0f + nosStage * 1.2f) * dt);
             if (kmh > 50f && nearMissCooldown <= 0f && Traffic != null)
             {
                 var nearTraffic = Traffic.Nearest(Vehicle.transform.position, 4.2f);
@@ -540,15 +566,16 @@ namespace Rise
                 }
             }
 
-            // 3. NOS Nitrous Activation on Boost [Shift]
+            // 3. NOS Nitrous Activation on Boost [Shift] (requires fuel & NOS system)
             bool wantsNos = GameInput.Sprint && GameInput.Gas > 0.05f && !GameInput.Handbrake;
             if (wantsNos && NosCharge > 1f)
             {
                 NosActive = true;
-                NosCharge = Mathf.Max(0f, NosCharge - 22f * dt);
-                float nosCap = Vehicle.Class.boost * 1.28f;
+                float drainRate = Mathf.Max(13f, 23f - nosStage * 3f);
+                NosCharge = Mathf.Max(0f, NosCharge - drainRate * dt);
+                float nosCap = Vehicle.Class.boost * (1.20f + nosStage * 0.08f) * (1f + Vehicle.EngineStage * 0.10f);
                 if (Vehicle.Speed < nosCap)
-                    Vehicle.Speed = Mathf.MoveTowards(Vehicle.Speed, nosCap, Vehicle.Class.accel * 0.85f * dt);
+                    Vehicle.Speed = Mathf.MoveTowards(Vehicle.Speed, nosCap, Vehicle.Class.accel * (0.78f + nosStage * 0.14f) * dt);
                 SetNosFlamesVisible(true);
             }
             else

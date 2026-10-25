@@ -42,6 +42,31 @@ namespace Rise.World
         public string DateText => $"{DayOfWeekShort}, {MonthShort} {DayOfMonth}, {Year}";
         public string FullDateText => $"{DayOfWeekFull}, {MonthFull} {DayOfMonth}, {Year}";
 
+        // Nigerian Seasonal Calendar: Dry & Harmattan Season (Nov–Feb), Early Wet (Mar), Rainy Season (Apr–Jul),
+        // August Break (Aug), and Late Rains (Sep–Oct).
+        public string SeasonId => Date.Month switch
+        {
+            12 or 1 => "dry_harmattan",
+            11 or 2 => "dry",
+            3 => "early_wet",
+            4 or 5 or 6 or 7 => "rainy",
+            8 => "august_break",
+            _ => "late_rains"
+        };
+
+        public string SeasonLabel => Date.Month switch
+        {
+            12 or 1 => "DRY · HARMATTAN",
+            11 or 2 => "DRY SEASON",
+            3 => "EARLY WET",
+            4 or 5 or 6 or 7 => "RAINY SEASON",
+            8 => "AUGUST BREAK",
+            _ => "LATE RAINS"
+        };
+
+        public bool IsDrySeason => Date.Month == 11 || Date.Month == 12 || Date.Month == 1 || Date.Month == 2;
+        public bool IsRainySeason => Date.Month >= 4 && Date.Month <= 10 && Date.Month != 8;
+
         public static int DayForDate(int year, int month, int day)
         {
             int y = Mathf.Clamp(year, 1999, 2100);

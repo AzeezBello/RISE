@@ -316,19 +316,38 @@ namespace Rise.World
 
         void Update()
         {
-            float dt = Time.deltaTime; bool night = clock != null && (clock.Clock > 18.5f || clock.Clock < 6f);
+            float dt = Time.deltaTime;
+            float h = clock != null ? clock.Clock : 12f;
+            bool night = clock != null && (h > 18.5f || h < 6f);
+            bool lateNight = clock != null && (h >= 21.5f || h < 6f);
             if (Outage > 0f) { Outage -= dt; if (Outage <= 0f) { Outage = 0f; Notify?.Invoke("NEPA", "Up NEPA! Light don come back."); } }
             else { outageT -= dt; if (outageT <= 0f) { outageT = Random.Range(120f, 260f); if (night && Random.value < 0.6f) { Outage = Random.Range(50f, 120f); Notify?.Invoke("NEPA", "NEPA don take light! Generators dey hum across Surulere."); } } }
 
             if (Current != null)
             {
                 Current.until -= dt;
-                if (Current.until <= 0f) { bool works = Current.works; Clear(); Notify?.Invoke(works ? "LASTMA" : "Traffic", works ? "Road works done — lane open again." : "Go-slow don clear."); }
+                // Auto-clear daytime "go-slow" congestion once late night arrives so roads don't stay gridlocked at 2 AM
+                if (lateNight && !Current.flood && !Current.works && !Current.wreck)
+                {
+                    Clear();
+                    Notify?.Invoke("Traffic", "Night road don clear — free flow till morning.");
+                }
+                else if (Current.until <= 0f)
+                {
+                    bool works = Current.works;
+                    Clear();
+                    Notify?.Invoke(works ? "LASTMA" : "Traffic", works ? "Road works done — lane open again." : "Go-slow don clear.");
+                }
             }
             else
             {
                 if (weather != null && weather.Storm) { StartFlood(); return; }
-                jamT -= dt; if (jamT <= 0f) { jamT = Random.Range(90f, 200f); if (Random.value < 0.7f) StartJam(); }
+                // Only spawn random go-slow and road-works hold-ups during daytime/evening commute hours (06:00–21:30)
+                if (!lateNight)
+                {
+                    jamT -= dt;
+                    if (jamT <= 0f) { jamT = Random.Range(90f, 200f); if (Random.value < 0.7f) StartJam(); }
+                }
             }
 
             if (ActiveEncounter != null)

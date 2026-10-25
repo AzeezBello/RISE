@@ -25,9 +25,34 @@ namespace Rise
         {
             label = "";
             if (string.IsNullOrEmpty(id)) return null;
+            if (id.StartsWith("pos:"))
+            {
+                var parts = id.Split(':');
+                if (parts.Length >= 3 &&
+                    float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float px) &&
+                    float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pz))
+                {
+                    var wPos = new Vector3(px, Data != null ? Data.DeckHeightAt(new Vector3(px, 0f, pz)) : 0f, pz);
+                    var reg = Data != null ? Data.RegionAt(wPos) : null;
+                    label = parts.Length >= 4 && !string.IsNullOrEmpty(parts[3]) ? parts[3] : (reg != null ? $"Custom Pin ({reg.name})" : "Custom Map Pin");
+                    return wPos;
+                }
+            }
+            if (id.StartsWith("veh:"))
+            {
+                string vid = id.Substring(4);
+                foreach (var pv in Parked)
+                    if (pv != null && pv.OwnedId == vid) { label = $"My {pv.Class.name}"; return pv.transform.position; }
+            }
             if (Data.TryPlace(id, out var place)) { label = place.name; return place.World(); }
+            if (Data.busStops != null)
+                foreach (var bs in Data.busStops)
+                    if (bs.id == id) { label = bs.name; return bs.World(); }
             var prop = Data.Property(id);
             if (prop != null) { label = prop.name; return prop.Door; }
+            if (Data.businesses != null)
+                foreach (var bz in Data.businesses)
+                    if (bz.id == id) { label = bz.name; return bz.World(); }
             if (Contacts != null) foreach (var c in Contacts.Contacts) if (c.data.id == id) { label = c.data.name; return c.pos; }
             return null;
         }

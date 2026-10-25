@@ -14,7 +14,36 @@ namespace Rise.World
         public bool Raining => rainLeft > 0f;
         public bool Storm { get; private set; }
         public string CurrentBiome = "coastal";
-        public bool Harmattan => (clock != null && clock.Day % 10 >= 7) || CurrentBiome == "sahel";
+        // Optional manual season override ("", "dry", "rainy"); empty follows DayNightCycle calendar month.
+        public string ForcedSeason = "";
+
+        public string ActiveSeasonId => !string.IsNullOrEmpty(ForcedSeason)
+            ? ForcedSeason
+            : (clock != null ? clock.SeasonId : "dry_harmattan");
+
+        public string ActiveSeasonLabel => ForcedSeason == "rainy"
+            ? "RAINY SEASON"
+            : ForcedSeason == "dry"
+                ? "DRY · HARMATTAN"
+                : (clock != null ? clock.SeasonLabel : "DRY · HARMATTAN");
+
+        public bool Harmattan => ActiveSeasonId == "dry_harmattan" || (ActiveSeasonId == "dry" && clock != null && clock.Day % 10 >= 7) || CurrentBiome == "sahel";
+
+        // Seasonal rain multiplier so it does NOT rain all year long:
+        // Dry & Harmattan (Dec–Jan): 0.0x, Nov/Feb Dry: 0.06x, Early Wet (Mar): 0.35x,
+        // Rainy Season (Apr–Jul): 1.10x, August Break (Aug): 0.18x, Late Rains (Sep–Oct): 0.95x.
+        public float SeasonalRainMultiplier => ActiveSeasonId switch
+        {
+            "dry_harmattan" or "dry_forced" or "dry" when ForcedSeason == "dry" => 0.0f,
+            "dry_harmattan" => 0.0f,
+            "dry" => 0.06f,
+            "early_wet" => 0.35f,
+            "rainy" => 1.10f,
+            "august_break" => 0.18f,
+            "late_rains" => 0.95f,
+            _ => 0.5f
+        };
+
         public float RegionalRainMultiplier => CurrentBiome switch
         {
             "niger_delta" => 1.5f,
@@ -26,6 +55,13 @@ namespace Rise.World
         public float Wet => Raining ? 0.7f : 1f;   // grip factor for driving
         [System.NonSerialized] public System.Action<string> Notify;
         [System.NonSerialized] public System.Action<bool> OnWet;
+
+        public void SetSeasonMode(string mode)
+        {
+            ForcedSeason = mode == "rainy" ? "rainy" : mode == "dry" ? "dry" : "";
+            if (SeasonalRainMultiplier <= 0.01f && Raining)
+                StopRain();
+        }
 
         public void Init(WorldData world, DayNightCycle dayNight, Transform cameraTransform)
         {
@@ -62,7 +98,13 @@ namespace Rise.World
             else
             {
                 nextCheck -= dt;
-                if (nextCheck <= 0f) { nextCheck = 60f; if (Random.value < data.weather.rainChance * RegionalRainMultiplier) StartRain(Random.Range(data.weather.rainMinMinutes, data.weather.rainMaxMinutes), Random.value < 0.35f); }
+                if (nextCheck <= 0f)
+                {
+                    nextCheck = 90f;
+                    float chance = data.weather.rainChance * RegionalRainMultiplier * SeasonalRainMultiplier;
+                    if (chance > 0.001f && Random.value < chance)
+                        StartRain(Random.Range(data.weather.rainMinMinutes, data.weather.rainMaxMinutes), Random.value < 0.35f);
+                }
             }
         }
 

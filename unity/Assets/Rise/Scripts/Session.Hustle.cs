@@ -304,48 +304,84 @@ namespace Rise
             var menu = new Menu
             {
                 Title = "Nigeria · 36 States & FCT",
-                Subtitle = "6 Geopolitical Zones · Interstate Highways, NRC Rail & Air Travel",
-                Line = "Select any Nigerian State or FCT Abuja to travel via interstate express coach/charter to its capital or geopolitical zone hub."
+                Subtitle = "6 Geopolitical Zones · Local Domestic Flights, NRC Rail & Interstate Highways",
+                Line = "Select any Nigerian State or FCT Abuja to fly via local domestic airline (for states with airports) or travel by interstate express coach."
             };
+            menu.Options.Add(new MenuOption
+            {
+                Label = $"✈ Local Domestic Flights Departure Board ({StateAirports.Length} States with Airports)",
+                Action = () => OpenStateFlightsMenu()
+            });
             if (Data.states != null)
             {
                 foreach (var st in Data.states)
                 {
                     var s = st;
                     int fare = Mathf.Max(0, s.fare);
+                    bool hasAirport = TryGetStateAirport(s.id, out var apSpec);
+                    string airBadge = hasAirport ? $" · ✈ ₦{apSpec.Fare:N0}" : "";
                     string tag = s.status == "active"
-                        ? (fare > 0 ? $"PLAYABLE HUB · ₦{fare:N0}" : "PLAYABLE HUB · LOCAL")
-                        : $"ZONE HUB · {s.distanceKm} km · ₦{fare:N0}";
+                        ? (fare > 0 ? $"PLAYABLE HUB · Coach ₦{fare:N0}{airBadge}" : $"PLAYABLE HUB · LOCAL{airBadge}")
+                        : $"ZONE HUB · {s.distanceKm} km · Coach ₦{fare:N0}{airBadge}";
                     menu.Options.Add(new MenuOption
                     {
                         Label = $"{s.name} ({s.capital}) · {s.zone} · {tag}",
                         Enabled = true,
-                        Action = () =>
-                        {
-                            string hubId = StateHubLandmarkId(s.id, s.zone);
-                            if (Data.TryPlace(hubId, out var dest))
-                            {
-                                if (fare > 0 && !State.Pay(fare))
-                                {
-                                    State.Toast($"Need ₦{fare:N0} for interstate travel to {s.name} ({s.capital})");
-                                    return;
-                                }
-                                if (Vehicle != null) Exit();
-                                Player.Teleport(dest.World() + new Vector3(0f, 0.6f, -10f), Player.transform.eulerAngles.y);
-                                Hours(Mathf.Clamp(s.distanceKm / 180f, 0.5f, 4f));
-                                State.AddXp(15);
-                                State.Toast($"Arrived in {s.name} ({s.capital}) — \"{s.slogan}\" via {s.corridor}");
-                            }
-                            else
-                            {
-                                State.Toast($"{s.name} State ({s.capital}) — \"{s.slogan}\" via {s.corridor}");
-                            }
-                        }
+                        Action = () => OpenStateTravelMenu(s)
                     });
                 }
             }
             menu.Options.Add(new MenuOption { Label = "Back", Action = null });
             OpenMenu(menu);
+        }
+
+        public void OpenStateTravelMenu(StateData s)
+        {
+            int fare = Mathf.Max(0, s.fare);
+            bool hasAirport = TryGetStateAirport(s.id, out var apSpec);
+            var m = new Menu
+            {
+                Title = $"{s.name} ({s.capital}) · {s.zone}",
+                Subtitle = $"“{s.slogan}” · {s.distanceKm} km via {s.corridor}",
+                Line = hasAirport
+                    ? $"{s.name} operates {apSpec.AirportName} ({apSpec.Airline}). Choose Local Domestic Flight or Interstate Road Coach:"
+                    : $"{s.name} does not have a commercial airport — travel via Interstate Road Coach along {s.corridor}."
+            };
+            if (hasAirport)
+            {
+                m.Options.Add(new MenuOption
+                {
+                    Label = $"✈ Local Domestic Flight to {apSpec.AirportName} ({apSpec.Airline}) · ₦{apSpec.Fare:N0}",
+                    Action = () => BookLocalStateFlight(apSpec)
+                });
+            }
+            m.Options.Add(new MenuOption
+            {
+                Label = $"Interstate Express Road Coach to {s.name} ({s.capital}) · {(fare > 0 ? $"₦{fare:N0}" : "Local")}",
+                Action = () =>
+                {
+                    string hubId = StateHubLandmarkId(s.id, s.zone);
+                    if (Data.TryPlace(hubId, out var dest))
+                    {
+                        if (fare > 0 && !State.Pay(fare))
+                        {
+                            State.Toast($"Need ₦{fare:N0} for interstate travel to {s.name} ({s.capital})");
+                            return;
+                        }
+                        if (Vehicle != null) Exit();
+                        Player.Teleport(dest.World() + new Vector3(0f, 0.6f, -10f), Player.transform.eulerAngles.y);
+                        Hours(Mathf.Clamp(s.distanceKm / 180f, 0.5f, 4f));
+                        State.AddXp(15);
+                        State.Toast($"Arrived in {s.name} ({s.capital}) — \"{s.slogan}\" via {s.corridor}");
+                    }
+                    else
+                    {
+                        State.Toast($"{s.name} State ({s.capital}) — \"{s.slogan}\" via {s.corridor}");
+                    }
+                }
+            });
+            m.Options.Add(new MenuOption { Label = "Back to 36 States Directory", Action = OpenStatesDirectory });
+            OpenMenu(m);
         }
 
         public void StartRun(ContactSystem.Contact c, HubRun run)
@@ -578,17 +614,27 @@ namespace Rise
             public Vector3 PitchCenter;
             public float PitchSurfaceY;
             public Transform MatchPropsRoot;
-            public Transform BallRoot, BallMesh, BallRing;
+            public Transform BallRoot, BallMesh, BallRing, TargetRing;
             public Vector3 BallPos, BallVel;
             public float BallSpinYaw;
             public Footballer BallCarrier;      // null if loose or carried by player
+            public Footballer BestReceiver;
+            public Footballer GiveAndGoRunner;
+            public float GiveAndGoTimer;
             public bool PlayerHasBall;
             public float PlayerControlLock;
+            public float SkillBoostTimer;
+            public int TacticMode;              // 0 = Balanced, 1 = All-Out Attack, 2 = Counter-Attack
+            public string TacticLabel => TacticMode == 1 ? "ALL-OUT ATTACK" : TacticMode == 2 ? "COUNTER-ATTACK" : "BALANCED";
             public float GoalBannerTimer;
             public string GoalBannerText = "";
-            public string Commentary = "Kick-off at the stadium! Pass with [E], Shoot with [F / Click], Chip with [G]!";
+            public string Commentary = "Kick-off at the stadium! Pass [E], Hold/Tap Shoot [F / Click], Skill/Chip [G], Tactics [T]!";
             public float CommentaryTimer = 6f;
             public float ShotPowerCharge;
+            public bool ChargingShot;
+            public float LastShotPower;
+            public float LastShotQualityTimer;
+            public string LastShotQualityLabel = "";
             public string SavedWeapon = "";
             public readonly List<Footballer> Players = new List<Footballer>();
         }
@@ -774,7 +820,22 @@ namespace Rise
                 LineBox("Goal Net Top", new Vector3(gx + side * 0.68f, y + 2.5f, c.z), new Vector3(1.35f, 0.08f, 5.7f), netMat);
                 LineBox("Goal Net L", new Vector3(gx + side * 0.68f, y + 1.25f, c.z - 2.85f), new Vector3(1.35f, 2.5f, 0.08f), netMat);
                 LineBox("Goal Net R", new Vector3(gx + side * 0.68f, y + 1.25f, c.z + 2.85f), new Vector3(1.35f, 2.5f, 0.08f), netMat);
+
+                // 3D Cylindrical Goalposts & Crossbar
+                LineBox("Post L", new Vector3(gx, y + 1.28f, c.z - 2.88f), new Vector3(0.14f, 2.56f, 0.14f), whiteMat);
+                LineBox("Post R", new Vector3(gx, y + 1.28f, c.z + 2.88f), new Vector3(0.14f, 2.56f, 0.14f), whiteMat);
+                LineBox("Crossbar", new Vector3(gx, y + 2.54f, c.z), new Vector3(0.14f, 0.14f, 5.9f), whiteMat);
+                LineBox("Penalty Spot", new Vector3(c.x + side * 15.8f, y + 0.01f, c.z), new Vector3(0.32f, 0.02f, 0.32f), whiteMat);
             }
+
+            // Halfway line & corner flags
+            LineBox("Halfway Line", new Vector3(c.x, y, c.z), new Vector3(0.18f, 0.02f, 28.0f), whiteMat);
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                {
+                    LineBox("CornerPole", new Vector3(c.x + sx * 20.5f, y + 0.55f, c.z + sz * 14f), new Vector3(0.06f, 1.1f, 0.06f), whiteMat);
+                    LineBox("CornerFlag", new Vector3(c.x + sx * 20.5f + 0.16f, y + 1.0f, c.z + sz * 14f), new Vector3(0.32f, 0.22f, 0.04f), goldMat);
+                }
 
             LineBox("Center Spot", new Vector3(c.x, y + 0.01f, c.z), new Vector3(0.6f, 0.02f, 0.6f), goldMat);
             LineBox("LED Hoarding N", new Vector3(c.x, y + 0.45f, c.z + 15.2f), new Vector3(36f, 0.9f, 0.25f), boardMat);
@@ -812,6 +873,15 @@ namespace Rise
             ringGo.GetComponent<MeshRenderer>().sharedMaterial = new Material(ShaderLib.Unlit) { color = new Color(0.16f, 0.92f, 0.52f, 0.85f) };
             Destroy(ringGo.GetComponent<Collider>());
             m.BallRing = ringGo.transform;
+
+            var targetRingGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            targetRingGo.name = "PassTargetRing";
+            targetRingGo.transform.SetParent(root, false);
+            targetRingGo.transform.localScale = new Vector3(1.45f, 0.018f, 1.45f);
+            targetRingGo.GetComponent<MeshRenderer>().sharedMaterial = new Material(ShaderLib.Unlit) { color = new Color(0.15f, 0.88f, 1.0f, 0.72f) };
+            Destroy(targetRingGo.GetComponent<Collider>());
+            targetRingGo.SetActive(false);
+            m.TargetRing = targetRingGo.transform;
         }
 
         void SpawnFootballSquads(LiveFootballMatch m)
@@ -964,6 +1034,53 @@ namespace Rise
                             : new Color(0.98f, 0.82f, 0.20f, 0.85f);
                 }
             }
+            if (m.TargetRing != null)
+            {
+                if (m.PlayerHasBall && m.BestReceiver != null && m.BestReceiver.Root != null)
+                {
+                    if (!m.TargetRing.gameObject.activeSelf) m.TargetRing.gameObject.SetActive(true);
+                    var rp = m.BestReceiver.Root.position;
+                    m.TargetRing.position = new Vector3(rp.x, m.PitchSurfaceY + 0.022f, rp.z);
+                }
+                else if (m.TargetRing.gameObject.activeSelf)
+                {
+                    m.TargetRing.gameObject.SetActive(false);
+                }
+            }
+        }
+
+        public void CycleFootballTactic()
+        {
+            var m = ActiveFootball;
+            if (m == null) return;
+            m.TacticMode = (m.TacticMode + 1) % 3;
+            SetFootballCommentary($"TEAM TACTICS: {m.TacticLabel} activated!");
+            State.Toast($"Football Tactic: {m.TacticLabel}");
+        }
+
+        Footballer FindBestPassReceiver(LiveFootballMatch m)
+        {
+            if (m == null || Player == null) return null;
+            Footballer bestMate = null;
+            float bestScore = float.MinValue;
+            Vector3 pPos = Player.transform.position;
+            Vector3 aimDir = Player.transform.forward;
+            aimDir.y = 0f;
+            if (aimDir.sqrMagnitude < 0.01f) aimDir = Vector3.right;
+            aimDir.Normalize();
+
+            foreach (var p in m.Players)
+            {
+                if (!p.IsHome || p.IsKeeper || p.Root == null) continue;
+                Vector3 toMate = p.Root.position - pPos;
+                toMate.y = 0f;
+                float d = toMate.magnitude;
+                if (d < 1.8f) continue;
+                float align = Vector3.Dot(aimDir, toMate.normalized);
+                float forwardAdvantage = (p.Root.position.x - pPos.x) * 1.4f + align * 8.5f - d * 0.28f;
+                if (forwardAdvantage > bestScore) { bestScore = forwardAdvantage; bestMate = p; }
+            }
+            return bestMate;
         }
 
         public bool FootballShoot(float powerBoost = 1f)
@@ -971,23 +1088,51 @@ namespace Rise
             var m = ActiveFootball;
             if (m == null || Player == null) return false;
 
+            // If an AI teammate has the ball, pressing Shoot commands them to fire on goal immediately!
+            if (!m.PlayerHasBall && m.BallCarrier != null && m.BallCarrier.IsHome && m.BallCarrier.Root != null)
+            {
+                var shooter = m.BallCarrier;
+                m.BallCarrier = null;
+                shooter.ActionCooldown = 1.0f;
+                Vector3 mateGoal = new Vector3(m.PitchCenter.x + 20.6f, m.PitchSurfaceY + 1.1f, m.PitchCenter.z + Random.Range(-2.1f, 2.1f));
+                m.BallVel = (mateGoal - m.BallPos).normalized * 23f + Vector3.up * 2.6f;
+                m.BallSpinYaw = Random.Range(-280f, 280f);
+                UI.SoundSystem.I?.PlayKick();
+                SetFootballCommentary($"You called SHOT! #{shooter.Number} {shooter.Name} unleashes a rocket at goal!");
+                return true;
+            }
+
             float distToBall = Vector3.Distance(Flat(Player.transform.position), Flat(m.BallPos));
             if (!m.PlayerHasBall && distToBall > 3.2f) return false;
 
             m.PlayerHasBall = false;
             m.BallCarrier = null;
             m.PlayerControlLock = 0.35f;
+            m.ChargingShot = false;
 
-            Vector3 goalTarget = new Vector3(m.PitchCenter.x + 20.6f, m.PitchSurfaceY + 1.15f, m.PitchCenter.z + Random.Range(-2.1f, 2.1f));
-            Vector3 toGoal = (goalTarget - m.BallPos).normalized;
+            // Directional corner aiming from player facing / movement input
+            float aimZ = Mathf.Clamp(Player.transform.forward.z * 2.6f + GameInput.Move.x * 0.8f, -2.35f, 2.35f);
+            if (Mathf.Abs(aimZ) < 0.35f) aimZ = (Random.value < 0.5f ? -1f : 1f) * Random.Range(1.1f, 2.15f);
+
+            bool greenTimed = powerBoost >= 1.12f && powerBoost <= 1.38f;
             float skillFactor = 1f + Mathf.Clamp01(State.S.skills.fitness / 180f) * 0.35f;
-            float shotSpeed = 23.5f * powerBoost * skillFactor;
+            float shotSpeed = 23.5f * Mathf.Clamp(powerBoost, 0.85f, 1.48f) * skillFactor * (greenTimed ? 1.12f : 1f);
+            float lift = greenTimed ? 2.85f : Mathf.Lerp(1.9f, 4.4f, Mathf.InverseLerp(0.85f, 1.45f, powerBoost));
 
-            m.BallVel = toGoal * shotSpeed + Vector3.up * Random.Range(2.4f, 4.2f);
-            m.BallSpinYaw = Random.Range(-360f, 360f);
+            Vector3 goalTarget = new Vector3(m.PitchCenter.x + 20.6f, m.PitchSurfaceY + 1.15f, m.PitchCenter.z + aimZ);
+            Vector3 toGoal = (goalTarget - m.BallPos).normalized;
+
+            m.BallVel = toGoal * shotSpeed + Vector3.up * lift;
+            m.BallSpinYaw = greenTimed ? -Mathf.Sign(aimZ) * 420f : Random.Range(-320f, 320f);
+            m.LastShotPower = Mathf.Clamp01((powerBoost - 0.8f) / 0.65f);
+            m.LastShotQualityTimer = 2.0f;
+            m.LastShotQualityLabel = greenTimed ? "GREEN TIMED FINISH! TOP-CORNER CURLER!" : powerBoost > 1.38f ? "POWER BLAST!" : "FINESSE STRIKE!";
+
             Player.SwingWeapon();
             UI.SoundSystem.I?.PlayKick();
-            SetFootballCommentary("Power strike unleashed towards the corner!");
+            SetFootballCommentary(greenTimed
+                ? "GREEN TIMED FINISH! Curling strike bending into the top corner!"
+                : "Power strike unleashed towards the corner!");
             return true;
         }
 
@@ -1001,41 +1146,40 @@ namespace Rise
                 var passer = m.BallCarrier;
                 m.BallCarrier = null;
                 passer.ActionCooldown = 0.65f;
+                m.GiveAndGoRunner = passer;
+                m.GiveAndGoTimer = 3.2f;
                 Vector3 toPlayer = (Player.transform.position + Player.transform.forward * 1.4f - m.BallPos);
                 toPlayer.y = 0f;
                 m.BallVel = toPlayer.normalized * 17.5f + Vector3.up * 1.1f;
                 UI.SoundSystem.I?.PlayKick(0.45f);
-                SetFootballCommentary($"{passer.Name} threads a crisp through-ball to you!");
+                SetFootballCommentary($"{passer.Name} threads a crisp 1-2 pass to you and sprints into space!");
                 return true;
             }
 
             float distToBall = Vector3.Distance(Flat(Player.transform.position), Flat(m.BallPos));
             if (!m.PlayerHasBall && distToBall > 2.8f) return false;
 
-            Footballer bestMate = null;
-            float bestScore = float.MinValue;
-            foreach (var p in m.Players)
-            {
-                if (!p.IsHome || p.IsKeeper || p.Root == null) continue;
-                float d = Vector3.Distance(Flat(Player.transform.position), Flat(p.Root.position));
-                if (d < 2f) continue;
-                float forwardAdvantage = (p.Root.position.x - Player.transform.position.x) * 1.6f - d * 0.35f;
-                if (forwardAdvantage > bestScore) { bestScore = forwardAdvantage; bestMate = p; }
-            }
+            Footballer bestMate = m.BestReceiver ?? FindBestPassReceiver(m);
 
             m.PlayerHasBall = false;
             m.BallCarrier = null;
             m.PlayerControlLock = 0.32f;
+            m.ChargingShot = false;
+            m.ShotPowerCharge = 0f;
 
+            // Lead through-ball ahead of forward runners
+            float leadX = bestMate != null && bestMate.Role == "ST" ? 2.4f : 1.5f;
             Vector3 targetPos = bestMate != null
-                ? bestMate.Root.position + Vector3.right * 1.5f
+                ? bestMate.Root.position + Vector3.right * leadX
                 : Player.transform.position + Player.transform.forward * 10f;
             Vector3 dir = (targetPos - m.BallPos);
             dir.y = 0f;
             float passDist = dir.magnitude;
-            m.BallVel = dir.normalized * Mathf.Clamp(12f + passDist * 0.45f, 13f, 20f) + Vector3.up * 0.9f;
+            m.BallVel = dir.normalized * Mathf.Clamp(13f + passDist * 0.48f, 14f, 21f) + Vector3.up * 0.85f;
             UI.SoundSystem.I?.PlayKick(0.45f);
-            SetFootballCommentary(bestMate != null ? $"Driven pass to #{bestMate.Number} {bestMate.Name}!" : "Through-ball played into space!");
+            SetFootballCommentary(bestMate != null
+                ? $"Through-ball played to #{bestMate.Number} {bestMate.Name}!"
+                : "Through-ball played into space!");
             return true;
         }
 
@@ -1046,16 +1190,45 @@ namespace Rise
             float distToBall = Vector3.Distance(Flat(Player.transform.position), Flat(m.BallPos));
             if (!m.PlayerHasBall && distToBall > 2.8f) return false;
 
+            float distToOpponentGoal = (m.PitchCenter.x + 20.5f) - m.BallPos.x;
+            // Outside 16.5m, [G] performs a Jay-Jay Okocha Skill Move (Stepover / Elastico / Speed Burst) that stuns nearby defenders!
+            if (m.PlayerHasBall && distToOpponentGoal > 16.5f)
+            {
+                m.SkillBoostTimer = 1.85f;
+                int stunned = 0;
+                foreach (var opp in m.Players)
+                {
+                    if (opp.IsHome || opp.Root == null) continue;
+                    if (Vector3.Distance(Flat(Player.transform.position), Flat(opp.Root.position)) < 4.2f)
+                    {
+                        opp.ActionCooldown = 1.65f;
+                        stunned++;
+                    }
+                }
+                Vector3 burst = Player.transform.position + Player.transform.forward * 1.65f;
+                burst.x = Mathf.Clamp(burst.x, m.PitchCenter.x - 19.8f, m.PitchCenter.x + 19.8f);
+                burst.z = Mathf.Clamp(burst.z, m.PitchCenter.z - 13.5f, m.PitchCenter.z + 13.5f);
+                Player.Teleport(new Vector3(burst.x, m.PitchSurfaceY + 0.05f, burst.z), Player.transform.eulerAngles.y);
+                m.BallPos = Player.transform.position + Player.transform.forward * 0.85f + Vector3.up * 0.45f;
+                UI.SoundSystem.I?.PlayKick(0.38f);
+                SetFootballCommentary(stunned > 0
+                    ? "JAY-JAY OKOCHA ELASTICO! Defender sent for suya — speed burst!"
+                    : "Okocha stepover skill burst! Driving down the pitch!");
+                return true;
+            }
+
             m.PlayerHasBall = false;
             m.BallCarrier = null;
             m.PlayerControlLock = 0.35f;
+            m.ChargingShot = false;
+            m.ShotPowerCharge = 0f;
 
-            Vector3 aim = new Vector3(m.PitchCenter.x + 20.5f, m.PitchSurfaceY, m.PitchCenter.z) - m.BallPos;
+            Vector3 aim = new Vector3(m.PitchCenter.x + 20.5f, m.PitchSurfaceY, m.PitchCenter.z + Mathf.Clamp(Player.transform.forward.z * 1.8f, -1.8f, 1.8f)) - m.BallPos;
             aim.y = 0f;
-            m.BallVel = aim.normalized * 14.5f + Vector3.up * 7.4f;
+            m.BallVel = aim.normalized * 14.8f + Vector3.up * 7.2f;
             Player.SwingWeapon();
             UI.SoundSystem.I?.PlayKick(0.55f);
-            SetFootballCommentary("Okocha rainbow flick / lofted chip over the defense!");
+            SetFootballCommentary("Audacious Okocha panenka / lofted chip over the keeper!");
             return true;
         }
 
@@ -1123,6 +1296,10 @@ namespace Rise
             if (m.GoalBannerTimer > 0f) m.GoalBannerTimer = Mathf.Max(0f, m.GoalBannerTimer - dt);
             if (m.PlayerControlLock > 0f) m.PlayerControlLock = Mathf.Max(0f, m.PlayerControlLock - dt);
             if (m.CommentaryTimer > 0f) m.CommentaryTimer = Mathf.Max(0f, m.CommentaryTimer - dt);
+            if (m.GiveAndGoTimer > 0f) m.GiveAndGoTimer = Mathf.Max(0f, m.GiveAndGoTimer - dt);
+            if (m.SkillBoostTimer > 0f) m.SkillBoostTimer = Mathf.Max(0f, m.SkillBoostTimer - dt);
+            if (m.LastShotQualityTimer > 0f) m.LastShotQualityTimer = Mathf.Max(0f, m.LastShotQualityTimer - dt);
+            m.BestReceiver = m.PlayerHasBall ? FindBestPassReceiver(m) : null;
 
             if (Player != null)
             {
@@ -1199,12 +1376,26 @@ namespace Rise
                 float relZ = m.BallPos.z - m.PitchCenter.z;
                 float relY = m.BallPos.y - m.PitchSurfaceY;
 
-                if (relX >= 20.1f && Mathf.Abs(relZ) <= 2.95f && relY <= 2.75f)
+                // Woodwork / Crossbar / Post clang physics
+                if (Mathf.Abs(relX) >= 19.9f && Mathf.Abs(relX) <= 20.6f)
+                {
+                    bool hitPost = Mathf.Abs(Mathf.Abs(relZ) - 2.92f) < 0.22f && relY <= 2.65f;
+                    bool hitBar = Mathf.Abs(relZ) <= 3.0f && Mathf.Abs(relY - 2.54f) < 0.18f;
+                    if (hitPost || hitBar)
+                    {
+                        m.BallVel.x = -m.BallVel.x * 0.65f;
+                        m.BallVel.z += Random.Range(-3.5f, 3.5f);
+                        UI.SoundSystem.I?.PlayKick(0.75f);
+                        SetFootballCommentary(hitBar ? "OFF THE CROSSBAR! So close!" : "OFF THE GOALPOST! Woodwork denies the goal!");
+                    }
+                }
+
+                if (relX >= 20.1f && Mathf.Abs(relZ) <= 2.90f && relY <= 2.52f)
                 {
                     OnFootballGoalScored(m, true, "Captain #10");
                     return;
                 }
-                if (relX <= -20.1f && Mathf.Abs(relZ) <= 2.95f && relY <= 2.75f)
+                if (relX <= -20.1f && Mathf.Abs(relZ) <= 2.90f && relY <= 2.52f)
                 {
                     OnFootballGoalScored(m, false, CurrentOpponentClub);
                     return;
@@ -1339,23 +1530,49 @@ namespace Rise
                     ? (m.PlayerHasBall || (m.BallCarrier != null && m.BallCarrier.IsHome))
                     : (m.BallCarrier != null && !m.BallCarrier.IsHome);
 
+                // Find if this player is the closest defender to the ball so only 1 defender presses while others hold shape
+                bool isClosestPresser = false;
+                if (!teamHasBall && dToBall < 11.5f)
+                {
+                    isClosestPresser = true;
+                    foreach (var mate in m.Players)
+                    {
+                        if (mate == p || mate.IsHome != p.IsHome || mate.IsKeeper || mate.Root == null) continue;
+                        if (Vector3.Distance(Flat(mate.Root.position), Flat(m.BallPos)) < dToBall - 0.4f)
+                        {
+                            isClosestPresser = false;
+                            break;
+                        }
+                    }
+                }
+
                 Vector3 desiredPos;
-                if (!teamHasBall && dToBall < 9.5f)
+                if (isClosestPresser)
                 {
                     desiredPos = new Vector3(m.BallPos.x, y, m.BallPos.z);
                 }
+                else if (p.IsHome && m.GiveAndGoTimer > 0f && m.GiveAndGoRunner == p)
+                {
+                    // 1-2 Give-and-Go overlapping sprint toward opponent box!
+                    desiredPos = new Vector3(Mathf.Min(c.x + 16.5f, pos.x + 9.0f), y, Mathf.Clamp(p.FormationOffset.z * 0.65f + c.z, c.z - 10f, c.z + 10f));
+                }
                 else
                 {
-                    float ballShiftX = Mathf.Clamp((m.BallPos.x - c.x) * 0.45f, -7f, 7f);
+                    float tacticBiasX = p.IsHome ? (m.TacticMode == 1 ? 4.5f : m.TacticMode == 2 ? -3.5f : 0.8f) : 0f;
+                    float attackRun = (p.IsHome && teamHasBall && p.Role == "ST") ? 5.2f : (p.IsHome && teamHasBall && p.Role == "CM") ? 2.8f : 0f;
+                    float ballShiftX = Mathf.Clamp((m.BallPos.x - c.x) * 0.52f + tacticBiasX + attackRun, -9.5f, 11.5f);
+                    float laneZ = c.z + p.FormationOffset.z;
+                    if (p.IsHome && teamHasBall && Player != null && Mathf.Abs(Player.transform.position.z - laneZ) < 2.2f)
+                        laneZ += p.FormationOffset.z >= 0f ? 2.8f : -2.8f; // spread wide to open passing lane
                     desiredPos = new Vector3(
                         Mathf.Clamp(c.x + p.FormationOffset.x + ballShiftX, c.x - 18.5f, c.x + 18.5f),
                         y,
-                        Mathf.Clamp(c.z + p.FormationOffset.z, c.z - 12.5f, c.z + 12.5f));
+                        Mathf.Clamp(laneZ, c.z - 12.5f, c.z + 12.5f));
                 }
 
                 Vector3 moveVec = desiredPos - pos;
                 moveVec.y = 0f;
-                float moveSpeed = !teamHasBall && dToBall < 9.5f ? (p.IsHome ? 6.0f : 5.2f) : 4.6f;
+                float moveSpeed = isClosestPresser ? (p.IsHome ? 6.2f : 5.4f) : (p.IsHome && teamHasBall && p.Role == "ST" ? 5.8f : 4.8f);
                 if (moveVec.sqrMagnitude > 0.15f)
                 {
                     p.Root.position = Vector3.MoveTowards(pos, desiredPos, moveSpeed * dt);

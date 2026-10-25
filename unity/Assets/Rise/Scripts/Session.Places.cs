@@ -1142,14 +1142,118 @@ namespace Rise
             OpenMenu(m);
         }
 
+        public struct StateAirportSpec
+        {
+            public string StateId, StateName, AirportName, Airline, HubPlaceId;
+            public int Fare;
+        }
+
+        // All 29 Nigerian States + FCT that operate FAAN / State Domestic & International Airports.
+        public static readonly StateAirportSpec[] StateAirports =
+        {
+            // South-West
+            new StateAirportSpec { StateId = "lagos", StateName = "Lagos", AirportName = "Murtala Muhammed Int'l (LOS) & Lekki–Epe Int'l", Airline = "Air Peace / Ibom Air", HubPlaceId = "ikeja-airport", Fare = 15000 },
+            new StateAirportSpec { StateId = "ogun", StateName = "Ogun", AirportName = "Gateway Int'l Agro-Cargo Airport (Iperu-Ilisan)", Airline = "ValueJet", HubPlaceId = "oke-mosan", Fare = 16000 },
+            new StateAirportSpec { StateId = "oyo", StateName = "Oyo", AirportName = "Samuel Ladoke Akintola Airport (Ibadan · IBA)", Airline = "Overland / Air Peace", HubPlaceId = "cocoa-house", Fare = 18000 },
+            new StateAirportSpec { StateId = "ondo", StateName = "Ondo", AirportName = "Akure Domestic Airport (AKR)", Airline = "Overland / Green Africa", HubPlaceId = "cocoa-house", Fare = 21000 },
+            new StateAirportSpec { StateId = "ekiti", StateName = "Ekiti", AirportName = "Ekiti State Agro-Allied Cargo Airport (Ado-Ekiti)", Airline = "Overland Airways", HubPlaceId = "cocoa-house", Fare = 22000 },
+            // South-South
+            new StateAirportSpec { StateId = "rivers", StateName = "Rivers", AirportName = "Port Harcourt Int'l Airport (PHC · Omagwa)", Airline = "Air Peace / Ibom Air", HubPlaceId = "ph-airport", Fare = 26000 },
+            new StateAirportSpec { StateId = "akwa_ibom", StateName = "Akwa Ibom", AirportName = "Victor Attah Int'l Airport (QUO · Uyo)", Airline = "Ibom Air Hub", HubPlaceId = "ph-airport", Fare = 27000 },
+            new StateAirportSpec { StateId = "delta", StateName = "Delta", AirportName = "Asaba Int'l Airport (ABB) & Osubi Warri (QRW)", Airline = "Air Peace / United Nigeria", HubPlaceId = "warri-refinery", Fare = 25000 },
+            new StateAirportSpec { StateId = "edo", StateName = "Edo", AirportName = "Benin Airport (BNI)", Airline = "Air Peace / Green Africa", HubPlaceId = "benin-igun-bronze", Fare = 23000 },
+            new StateAirportSpec { StateId = "cross_river", StateName = "Cross River", AirportName = "Margaret Ekpo Int'l Airport (CBQ · Calabar)", Airline = "Ibom Air / Air Peace", HubPlaceId = "ph-airport", Fare = 28000 },
+            new StateAirportSpec { StateId = "bayelsa", StateName = "Bayelsa", AirportName = "Bayelsa Int'l Airport (Yenagoa · Amassoma)", Airline = "United Nigeria", HubPlaceId = "ph-airport", Fare = 27000 },
+            // South-East
+            new StateAirportSpec { StateId = "enugu", StateName = "Enugu", AirportName = "Akanu Ibiam Int'l Airport (ENU)", Airline = "Air Peace / Ibom Air", HubPlaceId = "enugu-anambra-airport", Fare = 25000 },
+            new StateAirportSpec { StateId = "anambra", StateName = "Anambra", AirportName = "Chinua Achebe Int'l Cargo Airport (Umueri)", Airline = "Air Peace / United Nigeria", HubPlaceId = "enugu-anambra-airport", Fare = 25000 },
+            new StateAirportSpec { StateId = "imo", StateName = "Imo", AirportName = "Sam Mbakwe Int'l Cargo Airport (QOW · Owerri)", Airline = "Air Peace / United Nigeria", HubPlaceId = "enugu-anambra-airport", Fare = 26000 },
+            new StateAirportSpec { StateId = "ebonyi", StateName = "Ebonyi", AirportName = "Chuba Okadigbo Int'l Airport (Onueke · Abakaliki)", Airline = "United Nigeria", HubPlaceId = "enugu-anambra-airport", Fare = 27000 },
+            // North-Central
+            new StateAirportSpec { StateId = "fct", StateName = "FCT Abuja", AirportName = "Nnamdi Azikiwe Int'l Airport (ABV)", Airline = "Air Peace / Ibom Air", HubPlaceId = "abuja-airport", Fare = 28000 },
+            new StateAirportSpec { StateId = "kwara", StateName = "Kwara", AirportName = "Gen. Tunde Idiagbon Int'l Airport (ILR · Ilorin)", Airline = "Overland / Air Peace", HubPlaceId = "abuja-airport", Fare = 22000 },
+            new StateAirportSpec { StateId = "plateau", StateName = "Plateau", AirportName = "Yakubu Gowon Airport (JOS · Heipang)", Airline = "ValueJet / Max Air", HubPlaceId = "abuja-airport", Fare = 29000 },
+            new StateAirportSpec { StateId = "niger", StateName = "Niger", AirportName = "Bola Ahmed Tinubu Int'l Airport (MXJ · Minna)", Airline = "Overland Airways", HubPlaceId = "abuja-airport", Fare = 26000 },
+            new StateAirportSpec { StateId = "benue", StateName = "Benue", AirportName = "Makurdi Airport (MDI)", Airline = "Air Peace", HubPlaceId = "abuja-airport", Fare = 27000 },
+            new StateAirportSpec { StateId = "nasarawa", StateName = "Nasarawa", AirportName = "Lafia Cargo & Passenger Airport", Airline = "Overland Airways", HubPlaceId = "abuja-airport", Fare = 27000 },
+            // North-West
+            new StateAirportSpec { StateId = "kano", StateName = "Kano", AirportName = "Mallam Aminu Kano Int'l Airport (KAN)", Airline = "Max Air / Air Peace", HubPlaceId = "kano-airport", Fare = 32000 },
+            new StateAirportSpec { StateId = "kaduna", StateName = "Kaduna", AirportName = "Kaduna Int'l Airport (KAD)", Airline = "Azman / Air Peace", HubPlaceId = "kaduna-kakuri-works", Fare = 30000 },
+            new StateAirportSpec { StateId = "sokoto", StateName = "Sokoto", AirportName = "Sadiq Abubakar III Int'l Airport (SKO)", Airline = "Max Air / Air Peace", HubPlaceId = "kano-airport", Fare = 35000 },
+            new StateAirportSpec { StateId = "katsina", StateName = "Katsina", AirportName = "Umaru Musa Yar'Adua Airport (DKA)", Airline = "Max Air", HubPlaceId = "kano-airport", Fare = 33000 },
+            new StateAirportSpec { StateId = "kebbi", StateName = "Kebbi", AirportName = "Sir Ahmadu Bello Int'l Airport (Birnin Kebbi)", Airline = "Azman Air", HubPlaceId = "kano-airport", Fare = 35000 },
+            new StateAirportSpec { StateId = "jigawa", StateName = "Jigawa", AirportName = "Dutse Int'l Airport (Dutse)", Airline = "Overland Airways", HubPlaceId = "kano-airport", Fare = 33000 },
+            // North-East
+            new StateAirportSpec { StateId = "borno", StateName = "Borno", AirportName = "Muhammadu Buhari Int'l Airport (MIU · Maiduguri)", Airline = "Max Air / Azman", HubPlaceId = "jtf-fob-north", Fare = 36000 },
+            new StateAirportSpec { StateId = "adamawa", StateName = "Adamawa", AirportName = "Lamido Aliyu Mustapha Int'l Airport (YOL · Yola)", Airline = "Air Peace / Max Air", HubPlaceId = "jtf-fob-north", Fare = 34000 },
+            new StateAirportSpec { StateId = "bauchi", StateName = "Bauchi", AirportName = "Sir Abubakar Tafawa Balewa Int'l Airport (BCU)", Airline = "Max Air / ValueJet", HubPlaceId = "jtf-fob-north", Fare = 31000 },
+            new StateAirportSpec { StateId = "gombe", StateName = "Gombe", AirportName = "Brig. Zakari Maimalari Int'l Airport (GMO · Lawanti)", Airline = "Air Peace / Azman", HubPlaceId = "jtf-fob-north", Fare = 32000 },
+            new StateAirportSpec { StateId = "taraba", StateName = "Taraba", AirportName = "Danbaba Danfulani Suntai Airport (Jalingo)", Airline = "Overland Airways", HubPlaceId = "jtf-fob-north", Fare = 34000 },
+            new StateAirportSpec { StateId = "yobe", StateName = "Yobe", AirportName = "Muhammadu Buhari Cargo Airport (Damaturu)", Airline = "Max Air", HubPlaceId = "jtf-fob-north", Fare = 35000 },
+        };
+
+        public static bool TryGetStateAirport(string stateId, out StateAirportSpec spec)
+        {
+            foreach (var ap in StateAirports)
+                if (ap.StateId == stateId) { spec = ap; return true; }
+            spec = default;
+            return false;
+        }
+
+        public bool BookLocalStateFlight(StateAirportSpec ap)
+        {
+            if (!State.Pay(ap.Fare))
+            {
+                State.Toast($"Need ₦{ap.Fare:N0} for {ap.Airline} flight to {ap.AirportName}");
+                return false;
+            }
+            string placeId = Data.TryPlace(ap.HubPlaceId, out _) ? ap.HubPlaceId : StateHubLandmarkId(ap.StateId, "");
+            if (Data.TryPlace(placeId, out var destPlace))
+            {
+                if (Vehicle != null) Exit();
+                Player.Teleport(destPlace.World() + new Vector3(0f, 0.6f, -10f), Player.transform.eulerAngles.y);
+            }
+            Hours(0.85f);
+            State.AddXp(18);
+            State.AddRep("business", 2);
+            State.Toast($"[{ap.Airline}] Touched down at {ap.AirportName} ({ap.StateName})!");
+            return true;
+        }
+
+        public void OpenStateFlightsMenu(LandmarkData originAirport = null)
+        {
+            var m = new Menu
+            {
+                Title = "FAAN Domestic State Flights Board",
+                Subtitle = $"{StateAirports.Length} Nigerian States with Operational Domestic & Int'l Airports",
+                Line = "Select any state airport below to board a local commercial flight (Air Peace · Ibom Air · ValueJet · Overland · Max Air)."
+            };
+            foreach (var ap in StateAirports)
+            {
+                var captured = ap;
+                m.Options.Add(new MenuOption
+                {
+                    Label = $"✈ {ap.StateName}: {ap.AirportName} ({ap.Airline}) · ₦{ap.Fare:N0}",
+                    Action = () => BookLocalStateFlight(captured)
+                });
+            }
+            m.Options.Add(new MenuOption { Label = "Back to Terminal", Action = () => OpenAirportMenu(originAirport) });
+            OpenMenu(m);
+        }
+
         public void OpenAirportMenu(LandmarkData p)
         {
             var m = new Menu
             {
                 Title = p?.name ?? "Nigeria Aviation Terminal",
-                Subtitle = "Domestic Commercial Airlines (Air Peace · Ibom Air) & Executive Jet Charter",
-                Line = "Book a commercial domestic flight across Nigeria’s 6 Geopolitical Zones or charter a Private Executive Jet."
+                Subtitle = "Domestic Commercial Airlines (Air Peace · Ibom Air · ValueJet) & Executive Jet Charter",
+                Line = "Book a direct flight across regional airport hubs, open the full 33-State Domestic Airport Departure Board, or charter a Private Executive Jet."
             };
+            m.Options.Add(new MenuOption
+            {
+                Label = $"✈ All {StateAirports.Length} States Local Domestic Flights Board (Air Peace · Ibom Air · ValueJet)",
+                Action = () => OpenStateFlightsMenu(p)
+            });
             (string id, string label, int commercialFare)[] airports =
             {
                 ("ikeja-airport", "Murtala Muhammed Int'l Airport (Lagos MMA)", 15000),
@@ -1251,6 +1355,14 @@ namespace Rise
                     ? "Repair or respray your vehicle at Ladipo prices, or buy bulk tokunbo spare parts."
                     : $"Source wholesale market crates at {st.ToUpperInvariant()} regional prices (₦{lotCost:N0}), flip to interstate retailers, or step inside."
             };
+            if (isAuto)
+            {
+                m.Options.Add(new MenuOption
+                {
+                    Label = "NFS Underground Tuning & Mod Garage (Performance · NOS · Aero · Neon · Paint)",
+                    Action = () => OpenNfsGarageMenu(Vehicle)
+                });
+            }
             if (isAuto && Vehicle != null)
             {
                 m.Options.Add(new MenuOption
