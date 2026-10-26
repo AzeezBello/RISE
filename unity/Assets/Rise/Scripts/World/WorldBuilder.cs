@@ -33,7 +33,7 @@ namespace Rise.World
         static readonly string[] HouseColours = { "#e2d6bf", "#d8b98c", "#c9c2b3", "#b8c4cc", "#d9a66e", "#c7b7a2", "#e8e0d0", "#a9b7a1", "#e6c786", "#c48b71", "#9bb0a8", "#d4c4a8" };
         static readonly string[] RustyWoodenHouseModels = { "Landmarks/rusty_roof_wooden_house_1_3d_model_free", "Landmarks/rusty_roof_wooden_house_3d_model_free" };
         static readonly string[] ResidentialHouseModels = { "Landmarks/simple_house", "Landmarks/modular_house", "Landmarks/jasons_house", "Landmarks/heritage_house" };
-        static readonly string[] UrbanBlockModels = { "Landmarks/street_city_block", "Landmarks/urban_street_scene", "Landmarks/carentan_street_scene" };
+        static readonly string[] UrbanBlockModels = { "Landmarks/modular_house", "Landmarks/heritage_house", "Landmarks/hills_estate" };
 
         public void Build(WorldData data)
         {
@@ -204,18 +204,19 @@ namespace Rise.World
             return go;
         }
 
-        void Sign(string text, Vector3 position, string colour, float size = 1f, Transform parent = null, float offsetZ = 0.18f)
+        void Sign(string text, Vector3 position, string colour, float size = 1f, Transform parent = null, float offsetZ = 0.18f, float yaw = 0f)
         {
             var go = new GameObject("Sign " + text);
             go.transform.SetParent(parent ?? Root, false);
-            go.transform.position = position + new Vector3(0f, 0f, offsetZ);
-            go.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            Quaternion rot = Quaternion.Euler(0f, yaw, 0f);
+            go.transform.position = position + (rot * Vector3.forward) * offsetZ;
+            go.transform.rotation = Quaternion.Euler(0f, yaw + 180f, 0f);
             var tm = go.AddComponent<TextMesh>();
             tm.text = text; tm.font = font; tm.fontSize = 64; tm.characterSize = 0.07f * size; tm.fontStyle = FontStyle.Bold;
             tm.anchor = TextAnchor.MiddleCenter; tm.alignment = TextAlignment.Center; tm.color = Hex(colour, "#ffc52f");
             go.GetComponent<MeshRenderer>().sharedMaterial = font.material;
             var fl = go.AddComponent<Entities.FacingLabel>();
-            fl.BoardSign = true; fl.BasePos = position; fl.OffsetZ = offsetZ;
+            fl.BoardSign = true; fl.BasePos = position; fl.OffsetZ = offsetZ; fl.BoardYaw = yaw;
             ObjectCount++;
         }
 
@@ -453,7 +454,7 @@ namespace Rise.World
                         continue;
                     case "checkpoint": case "post":
                         Box(l.name, pos + Vector3.up * 1.6f, new Vector3(5f, 3.2f, 3.5f), Mat("lm-" + l.color, l.color), group);
-                        SpawnWorldGlb("Landmarks/wooden_watchtower", l.name + " Watchtower", pos + new Vector3(4.8f, 0f, 0f), new Vector3(4.2f, 7.5f, 4.2f), 0f);
+                        Box(l.name + " roof", pos + Vector3.up * 3.35f, new Vector3(5.6f, 0.28f, 4.1f), Mat("zinc", Zinc, 0.45f), group, false);
                         Sign(l.shortName, pos + new Vector3(0, 4.2f, 0), l.sign, 0.8f, group);
                         continue;
                     case "pitch":
@@ -624,25 +625,26 @@ namespace Rise.World
                 float h = Mathf.Max(3f, l.h);
                 string lmGlb = l.kind switch
                 {
-                    "market" => "Landmarks/automapping_market",
-                    "school" or "college" or "gov" or "hospital" or "police" => "Landmarks/court_hall",
                     "museum" => "Landmarks/heritage_house",
                     "warehouse" or "service" or "artisan" => "Landmarks/old_factory",
                     "hotel" => "Landmarks/hills_estate",
                     _ => null
                 };
-                if (lmGlb != null && SpawnWorldGlb(lmGlb, l.name, pos, new Vector3(fp.x, h + 1.5f, fp.y), 0f) != null)
+                float signRoofH = h;
+                GameObject spawnedLm = lmGlb != null ? SpawnWorldGlb(lmGlb, l.name, pos, new Vector3(fp.x, h + 1.5f, fp.y), 0f) : null;
+                if (spawnedLm != null)
                 {
-                    if (l.kind == "museum")
-                        SpawnWorldGlb("Characters/caveman_statue", l.name + " Monument", pos + new Vector3(0f, 0f, fp.y * 0.5f + 2.2f), new Vector3(2.2f, 3.4f, 2.2f), 180f, false);
+                    var gb = Entities.CharacterRig.Bounds(spawnedLm);
+                    signRoofH = Mathf.Clamp(gb.max.y - pos.y, 3.2f, h + 1.5f);
                 }
                 else
                 {
                     Box(l.name, pos + Vector3.up * h * 0.5f, new Vector3(fp.x, h, fp.y), body, group);
                     Box(l.name + " parapet", pos + Vector3.up * (h + 0.3f), new Vector3(fp.x + 0.6f, 0.6f, fp.y + 0.6f), Mat("parapet", "#6b655a"), group, false);
+                    Box(l.name + " canopy", pos + new Vector3(0f, 2.8f, fp.y * 0.5f + 0.6f), new Vector3(Mathf.Min(fp.x * 0.55f, 8.5f), 0.24f, 1.4f), Mat("parapet", "#6b655a"), group, false);
                 }
-                // Sign board on the street-facing side (north: data -z, world +z).
-                var signPos = pos + new Vector3(0, h + 1.3f, fp.y * 0.5f + 0.2f);
+                // Sign board on the street-facing side (north: data -z, world +z), anchored to the actual roofline.
+                var signPos = pos + new Vector3(0, signRoofH + 1.25f, fp.y * 0.5f + 0.2f);
                 Box(l.name + " board", signPos, new Vector3(Mathf.Min(fp.x * 0.9f, 2.2f + l.shortName.Length * 1.05f), 1.8f, 0.25f), Mat("board", "#1b1b1f"), group, false);
                 Sign(l.shortName, signPos, l.sign, 1f, group, 0.2f);
                 if (l.kind == "market") BuildMarketStalls(pos, fp, group);
@@ -663,30 +665,36 @@ namespace Rise.World
         public int StadiumModels { get; private set; }
         public int Trees { get; private set; }
 
-        // The real stadium models: fitted to the stadium footprint, feet on the ground.
+        // Clean, solid 3D Nigerian stadium bowl with tiered stands, green-white-green canopy fascia, turf pitch, and floodlights.
         bool BuildStadiumModel(LandmarkData l, Vector3 pos, Transform group)
         {
-            if (GameBootstrap.Mobile) return false;   // 182k-triangle model: too heavy for a phone, the procedural stand is used
-            bool teslim = (l.id + l.name).ToLower().Contains("teslim");
-            var prefab = Resources.Load<GameObject>("Models/Landmarks/" + (teslim ? "teslim_balogun_stadium" : "national_stadium"));
-            if (prefab == null) return false;
-            Vector3 target = teslim ? new Vector3(50f, 23f, 46f) : new Vector3(54f, 25f, 50f);
-            var go = Instantiate(prefab, group); go.name = l.name + " model";
-            go.transform.position = pos; go.transform.rotation = prefab.transform.localRotation; go.transform.localScale = Vector3.one;
-            var b = Entities.CharacterRig.Bounds(go);
-            if (b.size.x <= 0f || b.size.y <= 0f || b.size.z <= 0f) { Remove(go); return false; }
-            if (b.size.y > b.size.z || b.size.y > b.size.x)
-            {
-                go.transform.rotation = Quaternion.Euler(-90f, 0f, 0f) * go.transform.rotation;
-                b = Entities.CharacterRig.Bounds(go);
-            }
-            float fit = Mathf.Min(target.x / b.size.x, target.z / b.size.z, target.y / b.size.y);
-            go.transform.localScale = Vector3.one * fit;
-            b = Entities.CharacterRig.Bounds(go);
-            go.transform.position += new Vector3(pos.x - b.center.x, pos.y - b.min.y, pos.z - b.center.z);
-            b = Entities.CharacterRig.Bounds(go);
-            foreach (var c in go.GetComponentsInChildren<Collider>()) Remove(c);
-            var col = go.AddComponent<BoxCollider>(); col.center = go.transform.InverseTransformPoint(b.center); col.size = new Vector3(b.size.x / fit, b.size.y / fit, b.size.z / fit);
+            if (GameBootstrap.Mobile && !Application.isEditor) return false;
+            var go = new GameObject(l.name + " model");
+            go.transform.SetParent(group, false);
+            go.transform.position = pos;
+            var stadiumRoot = go.transform;
+
+            var concreteMat = Mat("stadium-concrete", "#c9c5bc", 0.25f);
+            var upperTierMat = Mat("stadium-upper", "#8a8f93", 0.30f);
+            var greenRingMat = Mat("stadium-green", "#008751", 0.42f);
+            var whiteRingMat = Mat("stadium-white", "#f4f5f0", 0.40f);
+            var pitchMat = Mat("pitch", Pitch, 0.15f);
+            var steelMat = Mat("pole", Steel, 0.45f);
+
+            Cylinder(l.name + " lower bowl", pos, 24f, 8.5f, concreteMat, stadiumRoot);
+            Cylinder(l.name + " upper bowl", pos + Vector3.up * 8.5f, 25.5f, 5.2f, upperTierMat, stadiumRoot, false);
+            Cylinder(l.name + " green fascia", pos + Vector3.up * 13.7f, 26.0f, 1.1f, greenRingMat, stadiumRoot, false);
+            Cylinder(l.name + " white canopy", pos + Vector3.up * 14.8f, 26.3f, 0.65f, whiteRingMat, stadiumRoot, false);
+            Cylinder(l.name + " turf pitch", pos + Vector3.up * 13.2f, 19.5f, 0.8f, pitchMat, stadiumRoot, false);
+
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                {
+                    var towerPos = pos + new Vector3(sx * 19.5f, 0f, sz * 19.5f);
+                    Cylinder("Stadium Floodlight Tower", towerPos, 0.32f, 18.0f, steelMat, stadiumRoot, false);
+                    Box("Stadium Floodlight Bank", towerPos + Vector3.up * 18.2f, new Vector3(2.4f, 0.85f, 0.9f), LampHead, stadiumRoot, false);
+                }
+
             StadiumModels++; ObjectCount++;
             return true;
         }
@@ -699,19 +707,15 @@ namespace Rise.World
             var plan = GameBootstrap.Mobile
                 ? new (string model, int count, float height)[]
                 {
-                    ("jabami_anime_tree-grass_v1", 8, 6f),
-                    ("maple_tree", 4, 6.5f),
-                    ("tree_spruce_pine", 4, 7f),
-                    ("game_ready_grass", 6, 1.1f),
-                    ("mud_grassland", 4, 0.6f)
+                    ("jabami_anime_tree-grass_v1", 12, 6f),
+                    ("maple_tree", 7, 6.5f),
+                    ("tree_spruce_pine", 7, 7f)
                 }
                 : new (string model, int count, float height)[]
                 {
-                    ("jabami_anime_tree-grass_v1", 18, 6f),
-                    ("maple_tree", 10, 6.8f),
-                    ("tree_spruce_pine", 8, 7f),
-                    ("game_ready_grass", 14, 1.1f),
-                    ("mud_grassland", 8, 0.65f)
+                    ("jabami_anime_tree-grass_v1", 20, 6f),
+                    ("maple_tree", 12, 6.8f),
+                    ("tree_spruce_pine", 10, 7f)
                 };
             var zones = new (float x0, float x1, float z0, float z1)[] { (-120, -22, -120, -22), (22, 120, -120, -22), (-120, -22, 22, 120), (22, 120, 22, 120), (346, 614, 315, 330) };
             var rng = new System.Random(42);
@@ -728,6 +732,7 @@ namespace Rise.World
                         float dx = Mathf.Lerp(z.x0 + 2f, z.x1 - 2f, (float)rng.NextDouble()), dz = Mathf.Lerp(z.z0 + 2f, z.z1 - 2f, (float)rng.NextDouble());
                         if (Data.InWaterData(dx, dz) || NearRoadData(dx, dz, 7f) || ReservedData(dx, dz)) continue;
                         var tree = Instantiate(prefab, group); tree.name = model;
+                        Entities.CharacterRig.RemapGlbMaterialsToLit(tree, 0.15f);
                         var pos = WorldData.W(dx, 0f, dz); pos.y = Data.DeckHeightAtData(dx, dz);
                         tree.transform.position = pos; tree.transform.rotation = prefab.transform.localRotation; tree.transform.localScale = Vector3.one;
                         var b = Entities.CharacterRig.Bounds(tree);
@@ -1522,14 +1527,10 @@ namespace Rise.World
                     SpawnWorldGlb("Props/newspaper_stack", "Newspaper Stand", pos + new Vector3(-1.55f, 0f, 0.4f), new Vector3(0.75f, 0.65f, 0.75f), 0f, false);
                 BuildLawmaBin(pos + new Vector3(1.9f, 0f, 0f), group, false);
             }
-            int vIdx = 0;
             foreach (var v in Data.vendors)
             {
                 var pos = v.World(0.3f);
-                if (vIdx++ < 14)
-                    SpawnWorldGlb("Props/wood_furniture", "Vendor Table", pos, new Vector3(2.1f, 1.05f, 1.3f), 0f, false);
-                else
-                    Box("Table", pos + Vector3.up * 0.5f, new Vector3(2f, 0.9f, 1.2f), Mat("stall", "#7a5a3a"), group);
+                Box("Table", pos + Vector3.up * 0.5f, new Vector3(2f, 0.9f, 1.2f), Mat("stall", "#7a5a3a"), group);
                 Box("Umbrella", pos + Vector3.up * 2.4f, new Vector3(2.6f, 0.12f, 2.6f), Mat("umbrella", "#d9534f"), group, false);
             }
             if (Data.TryPlace("lawma", out var lawmaDepot))
@@ -1542,7 +1543,7 @@ namespace Rise.World
 
         static readonly (string brand, string sub, string bgHex, string fgHex)[] LagosAds =
         {
-            ("MTN · EVERYWHERE YOU GO",       "5G HUSTLE BUNDLE · DIAL *312#",    "#ffcc00", "#0b1f3a"),
+            ("MTN · EVERYWHERE YOU GO",       "5G HUSTLE BUNDLE · DIAL *312#",    "#102542", "#ffcc00"),
             ("GLO · GRANDMASTERS OF DATA",    "RULE YOUR WORLD · UNLIMITED DATA", "#009a49", "#ffffff"),
             ("AIRTEL · SMARTPHONE NETWORK",   "BINGE STREAMING · NO BUFFER",      "#e40000", "#ffffff"),
             ("INDOMIE · TASTES GREAT!",       "NO BE SMALL THING · BELLE FULL",   "#d62828", "#ffdd00"),
@@ -1614,8 +1615,8 @@ namespace Rise.World
                 Box("Billboard Floodlight", pos + Vector3.up * 12.85f, new Vector3(9.4f, 0.16f, 0.65f), LampHead, group, false, rot);
                 Box("LASAA Plate", pos + Vector3.up * 8.15f, new Vector3(2.1f, 0.38f, 0.50f), lasaaBlue, group, false, rot);
 
-                Sign(ad.brand, pos + Vector3.up * 11.15f, ad.fgHex, 0.86f, group, 0.32f);
-                Sign(ad.sub, pos + Vector3.up * 9.85f, "#ffffff", 0.56f, group, 0.32f);
+                Sign(ad.brand, pos + Vector3.up * 11.15f, ad.fgHex, 0.64f, group, 0.34f, u.yaw);
+                Sign(ad.sub, pos + Vector3.up * 9.85f, "#ffffff", 0.42f, group, 0.34f, u.yaw);
             }
 
             // 2. Overhead Expressway Gantry Billboards spanning major highways
@@ -1649,8 +1650,8 @@ namespace Rise.World
                 Box("Gantry Truss", r.Point(g.at, r.k, 8.2f), h ? new Vector3(0.7f, 0.7f, span + 1f) : new Vector3(span + 1f, 0.7f, 0.7f), steel, group, false);
                 Box("Gantry Ad Board", r.Point(g.at, r.k, 9.4f), h ? new Vector3(0.55f, 2.9f, Mathf.Min(span - 4f, 16f)) : new Vector3(Mathf.Min(span - 4f, 16f), 2.9f, 0.55f), adMat, group, false);
                 Box("Gantry Floodlight", r.Point(g.at, r.k, 11.0f), h ? new Vector3(0.75f, 0.16f, 12f) : new Vector3(12f, 0.16f, 0.75f), LampHead, group, false);
-                Sign(ad.brand, center + Vector3.up * 9.8f, ad.fgHex, 0.85f, group, 0.35f);
-                Sign(ad.sub, center + Vector3.up * 8.75f, "#ffffff", 0.54f, group, 0.35f);
+                Sign(ad.brand, center + Vector3.up * 9.8f, ad.fgHex, 0.66f, group, 0.36f, h ? 90f : 0f);
+                Sign(ad.sub, center + Vector3.up * 8.75f, "#ffffff", 0.44f, group, 0.36f, h ? 90f : 0f);
             }
         }
     }

@@ -111,6 +111,8 @@ namespace Rise
         string interiorName, interiorKind;
         System.Action interiorService;
         public bool InInterior => interiorRoot != null;
+        public Vector3 OutdoorFocusPosition => InInterior ? interiorOutdoorPos : Focus.position;
+        public string InteriorName => interiorName;
 
         void DestroyInteriorRoot()
         {
@@ -217,15 +219,19 @@ namespace Rise
                 go.GetComponent<MeshRenderer>().sharedMaterial = Mat(c);
                 if (!col) Destroy(go.GetComponent<Collider>());
             }
+            var roomFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             void RoomLabel(string text, Vector3 localPos, Color col)
             {
                 var lgo = new GameObject("Label " + text);
                 lgo.transform.SetParent(interiorRoot.transform, false);
                 lgo.transform.position = RoomCenter + localPos;
+                lgo.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
                 var tm = lgo.AddComponent<TextMesh>();
-                tm.text = text; tm.characterSize = 0.11f; tm.fontSize = 36;
+                tm.text = text; tm.font = roomFont; tm.characterSize = 0.038f; tm.fontSize = 36; tm.fontStyle = FontStyle.Bold;
                 tm.anchor = TextAnchor.MiddleCenter; tm.alignment = TextAlignment.Center;
                 tm.color = col;
+                lgo.GetComponent<MeshRenderer>().sharedMaterial = roomFont.material;
+                lgo.AddComponent<Entities.FacingLabel>();
             }
 
             bool home = kind == "home";
@@ -315,19 +321,14 @@ namespace Rise
             lightGo.transform.position = RoomCenter + new Vector3(0f, 3.6f, 0f);
             var l = lightGo.AddComponent<Light>(); l.type = LightType.Point; l.range = 28f; l.intensity = 2.1f; l.color = new Color(1f, 0.94f, 0.82f);
 
-            // Spawn 3D Furnished Interior Set & Props from Resources/Models/Interiors and Resources/Models/Props
-            string interiorModel = home
-                ? (name.Contains("Ikoyi") || name.Contains("Lekki") || name.Contains("Banana") ? "Interiors/city_loft" : "Interiors/living_room")
-                : club
-                    ? "Interiors/spacious_hall"
-                    : kind == "hotel"
-                        ? "Interiors/panoramic_penthouse"
-                        : "Interiors/mini_office";
-            Entities.CharacterRig.InstantiateGlb(interiorModel, "InteriorDecorSet", RoomCenter + new Vector3(0f, 0.02f, -1.8f), new Vector3(hw * 1.35f, 3.4f, hd * 1.15f), interiorRoot.transform, 0f, false);
-            Entities.CharacterRig.InstantiateGlb("Props/wood_furniture", "IndoorFurniture", RoomCenter + new Vector3(-hw + 1.4f, 0.02f, -hd + 1.6f), new Vector3(2.2f, 1.2f, 1.4f), interiorRoot.transform, 0f, false);
+            // Full-scale 3D interior furnishings (sofa, coffee table, shelves, ceiling fixture) + clean wall/door props
+            RoomBox("LoungeSofaSeat", new Vector3(-hw + 1.5f, 0.32f, -hd + 1.8f), new Vector3(2.2f, 0.45f, 0.95f), club ? new Color(0.45f, 0.14f, 0.38f) : new Color(0.54f, 0.32f, 0.20f));
+            RoomBox("LoungeSofaBack", new Vector3(-hw + 1.5f, 0.68f, -hd + 1.38f), new Vector3(2.2f, 0.55f, 0.22f), club ? new Color(0.38f, 0.10f, 0.32f) : new Color(0.46f, 0.26f, 0.16f));
+            RoomBox("CoffeeTable", new Vector3(-hw + 1.5f, 0.28f, -hd + 2.85f), new Vector3(1.4f, 0.42f, 0.75f), new Color(0.32f, 0.22f, 0.14f));
+            RoomBox("CornerCabinet", new Vector3(hw - 1.4f, 0.85f, -hd + 0.9f), new Vector3(1.6f, 1.7f, 0.65f), new Color(0.36f, 0.25f, 0.16f));
             Entities.CharacterRig.InstantiateGlb("Props/air_conditioner", "IndoorSplitAC", RoomCenter + new Vector3(0f, 3.2f, -hd + 0.35f), new Vector3(1.1f, 0.5f, 0.4f), interiorRoot.transform, 0f, false);
             Entities.CharacterRig.InstantiateGlb("Props/doors_window", "IndoorEntryDoor", RoomCenter + new Vector3(0f, 0.02f, hd - 0.25f), new Vector3(1.8f, 2.3f, 0.3f), interiorRoot.transform, 0f, false);
-            Entities.CharacterRig.InstantiateGlb("Props/newspaper_stack", "IndoorMagazines", RoomCenter + new Vector3(hw - 1.5f, 0.02f, -hd + 1.5f), new Vector3(0.65f, 0.45f, 0.65f), interiorRoot.transform, 0f, false);
+            Entities.CharacterRig.InstantiateGlb("Props/newspaper_stack", "IndoorMagazines", RoomCenter + new Vector3(-hw + 1.5f, 0.50f, -hd + 2.85f), new Vector3(0.45f, 0.25f, 0.45f), interiorRoot.transform, 0f, false);
             if (home || kind == "gym")
                 Entities.CharacterRig.InstantiateGlb("Props/football_shirt", "FramedSuperEaglesJersey", RoomCenter + new Vector3(-hw + 0.35f, 1.8f, -1.5f), new Vector3(0.9f, 1.1f, 0.3f), interiorRoot.transform, 90f, false);
 

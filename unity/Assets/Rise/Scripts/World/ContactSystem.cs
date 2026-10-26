@@ -119,14 +119,15 @@ namespace Rise.World
             return null;
         }
 
-        // The current objective's contact carries a bobbing yellow arrow over their head.
+        // The current objective's contact carries a bobbing yellow diamond pointer over their head.
         public void SetArrow(string contactId)
         {
             if (arrow == null)
             {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder); go.name = "Objective arrow";
-                go.transform.localScale = new Vector3(0.9f, 0.45f, 0.9f);
-                var m = new Material(ShaderLib.Lit) { color = new Color(1f, 0.77f, 0.18f) }; m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", new Color(1f, 0.77f, 0.18f) * 1.5f);
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube); go.name = "Objective arrow";
+                go.transform.localScale = new Vector3(0.28f, 0.28f, 0.28f);
+                go.transform.localRotation = Quaternion.Euler(45f, 45f, 45f);
+                var m = new Material(ShaderLib.Lit) { color = new Color(1f, 0.77f, 0.18f) }; m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", new Color(1f, 0.77f, 0.18f) * 1.2f);
                 go.GetComponent<MeshRenderer>().sharedMaterial = m; Destroy(go.GetComponent<Collider>());
                 arrow = go.transform; arrow.SetParent(transform, false);
             }

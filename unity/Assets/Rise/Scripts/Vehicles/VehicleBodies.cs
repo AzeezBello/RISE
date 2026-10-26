@@ -65,7 +65,7 @@ namespace Rise.Vehicles
             ["car"] = new[] { "1997_nissan_200sx_s14", "2015_dodge_charger_srt_hellcat", "2015_mercedes-benz_s65_amg_coupe" },
             ["luxury"] = new[] { "2015_mercedes-benz_s65_amg_coupe", "2018_audi_e-tron_gt_concept", "2026_ferrari_296_speciale_a", "ferrari_f40_modified", "2015_dodge_charger_srt_hellcat" },
             ["sports"] = new[] { "2026_ferrari_296_speciale_a", "ferrari_f40_modified", "2018_audi_e-tron_gt_concept", "1997_nissan_200sx_s14" },
-            ["police"] = new[] { "uaz_469_un", "2015_dodge_charger_srt_hellcat" },
+            ["police"] = new[] { "2015_dodge_charger_srt_hellcat", "1997_nissan_200sx_s14" },
             ["lawma"] = new[] { "isuzu_cargo_base_truck", "tata_signa_cargo_truck" },
             ["fire"] = new[] { "tata_signa_cargo_truck", "2003-gmc-topkick-c6500" },
             ["ambulance"] = new[] { "volkswagen_crafter" },
@@ -76,7 +76,7 @@ namespace Rise.Vehicles
             ["korope"] = new[] { "suzuki_carry_minivan" },
             ["okada"] = new[] { "suzuki_gsx-r750" },
             ["brt"] = new[] { "volkswagen_crafter" },
-            ["army"] = new[] { "uaz_469_un", "2003-gmc-topkick-c6500" },
+            ["army"] = new[] { "2003-gmc-topkick-c6500", "dodge_ram_1500_rebel" },
             ["tanker"] = new[] { "fuel_truck", "heavy_commercial_vehicle_hcv" },
             ["pickup"] = new[] { "dodge_ram_1500_rebel", "lightbody_90_md_pickup_-_low_poly_model" },
             ["van"] = new[] { "volkswagen_crafter" },
@@ -130,7 +130,12 @@ namespace Rise.Vehicles
             foreach (var rend in model.GetComponentsInChildren<Renderer>(true))
             {
                 var n = rend.gameObject.name;
-                if ((n.StartsWith("Wheel_") && n.Contains("_Motion")) || (n.StartsWith("lights_") && n.Contains("_glows_"))) rend.gameObject.SetActive(false);   // inactive: also out of the fitting bounds
+                var mn = rend.sharedMaterial != null ? rend.sharedMaterial.name : "";
+                if ((n.StartsWith("Wheel_") && n.Contains("_Motion"))
+                    || (n.StartsWith("lights_") && n.Contains("_glows_"))
+                    || mn.Contains("Zemin")
+                    || n == "Object_18" || n == "Object_134")
+                    rend.gameObject.SetActive(false);   // inactive: also out of the fitting bounds
             }
             if (LitRemap.Contains(name)) RemapToLit(model);
             var fix = FixOverride?.Invoke(name) ?? (ModelFix.TryGetValue(name, out var f) ? f : Vector3.zero);
@@ -442,11 +447,19 @@ namespace Rise.Vehicles
                     break;
                 }
             }
-            // Ground contact drop shadow under every vehicle so wheels sit firmly planted on the road.
+            // Front emissive headlamps & ruby rear taillamps so vehicles remain clearly visible day and night.
             if (cls.id != "okada" && cls.id != "motorcycle")
             {
-                var shadow = Part(root, PrimitiveType.Cube, new Vector3(0f, 0.02f, 0f), new Vector3(wid * 0.92f, 0.015f, len * 0.92f), Mat("#090c0e", 0.05f, 0f));
-                shadow.name = "DropShadow";
+                var headGlow = Mat("#fff6d6", 0.92f, 0.1f);
+                if (headGlow.HasProperty("_EmissionColor")) { headGlow.EnableKeyword("_EMISSION"); headGlow.SetColor("_EmissionColor", new Color(1.0f, 0.95f, 0.80f) * 1.4f); }
+                var tailGlow = Mat("#ef4444", 0.90f, 0.1f);
+                if (tailGlow.HasProperty("_EmissionColor")) { tailGlow.EnableKeyword("_EMISSION"); tailGlow.SetColor("_EmissionColor", new Color(0.95f, 0.18f, 0.18f) * 1.1f); }
+                float lampY = Mathf.Clamp(h * 0.42f, 0.48f, 0.88f);
+                foreach (float sx in new[] { -1f, 1f })
+                {
+                    Part(root, PrimitiveType.Cube, new Vector3(sx * wid * 0.34f, lampY, len * 0.485f), new Vector3(wid * 0.14f, 0.10f, 0.04f), headGlow);
+                    Part(root, PrimitiveType.Cube, new Vector3(sx * wid * 0.34f, lampY, -len * 0.485f), new Vector3(wid * 0.14f, 0.10f, 0.04f), tailGlow);
+                }
             }
         }
 

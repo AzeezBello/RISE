@@ -172,10 +172,10 @@ namespace Rise.UI
             bodyClip = Txt(R, 14 * s, Text); bodyClip.clipping = TextClipping.Clip;
             bodyStrongClip = Txt(B, 14 * s, Text); bodyStrongClip.clipping = TextClipping.Clip;
             bodyMutedClip = Txt(R, 14 * s, A(Muted, 0.6f)); bodyMutedClip.clipping = TextClipping.Clip;
-            bodyWrap = Txt(R, 14 * s, Text, TextAnchor.UpperLeft, true);
+            bodyWrap = Txt(R, 14 * s, Text, TextAnchor.UpperLeft, true); bodyWrap.clipping = TextClipping.Clip;
             small = Txt(R, 12 * s, Muted);
             smallClip = Txt(R, 12 * s, Muted); smallClip.clipping = TextClipping.Clip;
-            smallWrap = Txt(R, 12 * s, Muted, TextAnchor.UpperLeft, true);
+            smallWrap = Txt(R, 12 * s, Muted, TextAnchor.UpperLeft, true); smallWrap.clipping = TextClipping.Clip;
             smallRight = Txt(R, 12 * s, Muted, TextAnchor.MiddleRight);
             keyText = Txt(B, 12 * s, Ink, TextAnchor.MiddleCenter);
             promptText = Txt(B, 15 * s, Text);
@@ -368,12 +368,14 @@ namespace Rise.UI
         void DrawLocation(float s, float m)
         {
             var focus = session.Vehicle != null ? session.Vehicle.transform : session.Player.transform;
-            var pos = focus.position;
+            var pos = session.InInterior ? session.OutdoorFocusPosition : focus.position;
             var region = data.RegionAt(pos);
             var road = data.RoadAt(pos, 9f);
             string street = road != null ? data.RoadNameAt(road, road.Along(pos)) : null;
             data.DeckHeightAt(pos, out var bridge);
             if (bridge != null) street = bridge.name;
+            if (session.InInterior && !string.IsNullOrEmpty(session.InteriorName))
+                street = string.IsNullOrEmpty(street) ? session.InteriorName : $"{session.InteriorName} · {street}";
             string place = region != null ? region.name : data.meta.name;
 
             float pad = 12f * s, accent = 3f * s;
@@ -478,7 +480,7 @@ namespace Rise.UI
                 Box(r, rSmall, Hex(0x0A1412, 0.96f));
 
             var focus = session.Vehicle != null ? session.Vehicle.transform : session.Player.transform;
-            Vector3 centerPos = focus.position;
+            Vector3 centerPos = session.InInterior ? session.OutdoorFocusPosition : focus.position;
             float viewRadius = minimap != null ? Mathf.Max(20f, minimap.Size) : 75f;
 
             Vector2 WorldToMinimap(Vector3 wp)
@@ -716,8 +718,10 @@ namespace Rise.UI
                 Label(new Rect(cx, cy, 100f * s, LH(huge)), kmh, huge);
                 Label(new Rect(cx + TW(huge, kmh) + 6f * s, cy + LH(huge) - LH(small) - 6f * s, 50f * s, LH(small)), "km/h", small);
                 int gear = v.Speed < -0.5f ? 0 : Mathf.Clamp(1 + Mathf.FloorToInt(v.Kmh / 24f), 1, 6);
-                string gearLabel = st.fuel <= 0.05f ? "NO FUEL" : gear == 0 ? "REV" : $"GEAR {gear}";
-                Pill(cx, cy + LH(huge) + 4f * s, session.NosActive ? "NOS BOOST!" : gearLabel, st.fuel <= 0.05f ? Red : session.NosActive ? Blue : Gold, s);
+                bool noFuel = st.fuel <= 0.05f;
+                bool wrecked = v.Condition <= 0.5f;
+                string gearLabel = noFuel ? "NO FUEL" : wrecked ? "WRECKED" : gear == 0 ? "REV" : $"GEAR {gear}";
+                Pill(cx, cy + LH(huge) + 4f * s, session.NosActive ? "NOS BOOST!" : gearLabel, (noFuel || wrecked) ? Red : session.NosActive ? Blue : Gold, s);
 
                 float bx = cr.x + 128f * s, bw = cr.xMax - pad - bx, by = cr.y + 10f * s;
                 float fuel = st.fuel, cond = v.Condition, nos = session.NosCharge;
@@ -727,11 +731,11 @@ namespace Rise.UI
                     Bar(new Rect(bx, by + 15f * s, bw, 6f * s), nos / 100f, session.NosActive ? Color.cyan : Blue);
                     by += 27f * s;
                 }
-                Label(new Rect(bx, by, bw, 14f * s), fuel <= 0.05f ? "FUEL (EMPTY!)" : "FUEL", overline, fuel <= 0.05f ? Red : Muted);
+                Label(new Rect(bx, by, bw, 14f * s), noFuel ? "FUEL (EMPTY!)" : "FUEL", overline, noFuel ? Red : Muted);
                 Label(new Rect(bx, by, bw, 14f * s), $"{fuel:0}%", smallRight);
                 Bar(new Rect(bx, by + 15f * s, bw, 6f * s), fuel / 100f, fuel < 15f ? Red : Gold);
                 by += 27f * s;
-                Label(new Rect(bx, by, bw, 14f * s), "CONDITION", overline); Label(new Rect(bx, by, bw, 14f * s), $"{cond:0}%", smallRight);
+                Label(new Rect(bx, by, bw, 14f * s), wrecked ? "CONDITION (WRECKED!)" : "CONDITION", overline, wrecked ? Red : Muted); Label(new Rect(bx, by, bw, 14f * s), $"{cond:0}%", smallRight);
                 Bar(new Rect(bx, by + 15f * s, bw, 6f * s), cond / 100f, cond < 30f ? Red : cond < 60f ? Gold : Green);
             }
         }
@@ -1240,10 +1244,10 @@ namespace Rise.UI
 
                 if (!string.IsNullOrEmpty(menu.Line))
                 {
-                    float qH = Mathf.Min(84f * s, TH(bodyWrap, menu.Line, iw - 16f * s) + 12f * s);
+                    float qH = Mathf.Clamp(TH(smallWrap, menu.Line, iw - 16f * s) + 14f * s, 44f * s, 118f * s);
                     var bubble = new Rect(x, y, iw, qH);
                     Box(bubble, rMid, new Color(0.12f, 0.22f, 0.36f, 0.92f));
-                    Label(new Rect(bubble.x + 8f * s, bubble.y + 6f * s, bubble.width - 16f * s, qH - 12f * s), menu.Line, bodyWrap, Color.white);
+                    Label(new Rect(bubble.x + 8f * s, bubble.y + 6f * s, bubble.width - 16f * s, qH - 12f * s), menu.Line, smallWrap, Color.white);
                     y += qH + 6f * s;
                 }
 
@@ -1312,7 +1316,7 @@ namespace Rise.UI
 
             // Map world coordinate conversion (-1650..1650)
             float worldSpan = 3300f / Mathf.Clamp(mapCanvasZoom, 0.55f, 2.5f);
-            Vector3 pPos = session.Player != null ? session.Player.transform.position : Vector3.zero;
+            Vector3 pPos = session.InInterior ? session.OutdoorFocusPosition : (session.Player != null ? session.Player.transform.position : Vector3.zero);
             Vector2 centerXZ = new Vector2(Mathf.Clamp(pPos.x, -600f, 600f), Mathf.Clamp(pPos.z, -600f, 600f));
 
             Vector2 WorldToMap(Vector3 wPos)

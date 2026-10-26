@@ -436,7 +436,7 @@ namespace Rise.Entities
         {
             Load();
             var rig = new RigInstance { Cesium = cesium && CesiumAvailable };
-            var srcPrefab = rig.Cesium ? cesiumPrefab : (prefab != null ? prefab : cesiumPrefab);
+            var srcPrefab = prefab != null ? prefab : cesiumPrefab;
             var go = Object.Instantiate(srcPrefab, parent, false);
             go.name = rig.Cesium ? "Rig (CesiumMan)" : "Rig";
             rig.Root = go;

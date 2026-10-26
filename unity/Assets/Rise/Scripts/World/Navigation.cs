@@ -80,17 +80,24 @@ namespace Rise.World
                 return g.transform;
             }
 
-            // Ground halo ring & vertical light rim
-            RingPart(marker, "HaloBase", PrimitiveType.Cylinder, new Vector3(0f, 0.04f, 0f), new Vector3(4.2f, 0.04f, 4.2f), haloGold);
-            RingPart(marker, "HaloRim", PrimitiveType.Cylinder, new Vector3(0f, 0.28f, 0f), new Vector3(4.35f, 0.22f, 4.35f), haloRim);
+            // Hollow ground perimeter ring (16 thin segments so the ground and NPC feet are never occluded by a solid disc)
+            const int ringSegs = 16;
+            const float ringRadius = 2.05f;
+            float segLen = (2f * Mathf.PI * ringRadius / ringSegs) * 1.06f;
+            for (int s = 0; s < ringSegs; s++)
+            {
+                float a = (s / (float)ringSegs) * Mathf.PI * 2f;
+                Vector3 rp = new Vector3(Mathf.Cos(a) * ringRadius, 0.03f, Mathf.Sin(a) * ringRadius);
+                Quaternion rr = Quaternion.Euler(0f, -a * Mathf.Rad2Deg, 0f);
+                RingPart(marker, "HaloSeg_" + s, PrimitiveType.Cube, rp, new Vector3(0.14f, 0.04f, segLen), s % 2 == 0 ? haloGold : haloRim, rr);
+            }
 
-            // Floating 3D Taxi / Objective Beacon above the ring
+            // Sleek floating diamond beacon high above the ring
             beacon = new GameObject("Beacon").transform;
             beacon.SetParent(marker, false);
-            beacon.localPosition = new Vector3(0f, 1.85f, 0f);
-            RingPart(beacon, "CarBody", PrimitiveType.Cube, new Vector3(0f, 0f, 0f), new Vector3(0.95f, 0.30f, 1.45f), beaconMat);
-            RingPart(beacon, "CarCabin", PrimitiveType.Cube, new Vector3(0f, 0.24f, -0.05f), new Vector3(0.76f, 0.26f, 0.82f), beaconMat);
-            RingPart(beacon, "TaxiTopper", PrimitiveType.Cube, new Vector3(0f, 0.44f, -0.05f), new Vector3(0.36f, 0.16f, 0.24f), haloRim);
+            beacon.localPosition = new Vector3(0f, 3.15f, 0f);
+            RingPart(beacon, "DiamondCore", PrimitiveType.Cube, Vector3.zero, new Vector3(0.32f, 0.32f, 0.32f), beaconMat, Quaternion.Euler(45f, 0f, 45f));
+            RingPart(beacon, "DiamondRim", PrimitiveType.Cube, new Vector3(0f, 0.28f, 0f), new Vector3(0.16f, 0.16f, 0.16f), haloRim, Quaternion.Euler(45f, 45f, 45f));
 
             // Animated glowing white/gold ground chevrons ("> > > > >") leading into the ring + en-route ahead of the player
             chevronRoot = new GameObject("ApproachChevrons").transform;
@@ -387,7 +394,7 @@ namespace Rise.World
                 if (beacon != null)
                 {
                     beacon.Rotate(Vector3.up, Time.deltaTime * 55f, Space.Self);
-                    beacon.localPosition = new Vector3(0f, 1.85f + Mathf.Sin(Time.time * 3.4f) * 0.18f, 0f);
+                    beacon.localPosition = new Vector3(0f, 3.15f + Mathf.Sin(Time.time * 3.4f) * 0.14f, 0f);
                 }
                 for (int i = 0; i < chevronMats.Count; i++)
                 {

@@ -119,6 +119,17 @@ namespace Rise
             return true;
         }
 
+        public bool EmergencyRepair(VehicleController v, int cost = 5000)
+        {
+            if (v == null || v.Condition >= 99f) { State.Toast("Vehicle condition is already 100%"); return false; }
+            if (!State.Pay(cost)) { State.Toast($"Need ₦{cost:N0} for roadside mechanic repair"); return false; }
+            v.Condition = 100f;
+            if (v.Owned && !string.IsNullOrEmpty(v.OwnedId))
+                foreach (var o in State.S.vehicles) if (o.id == v.OwnedId) o.cond = 100f;
+            State.Toast($"Roadside mechanic restored {v.Class?.name ?? "vehicle"} to 100% condition · -₦{cost:N0}");
+            return true;
+        }
+
         // ---- Need for Speed (NFS) Underground Tuning, Performance, Aero & Paint Garage ----
         GameObject nfsBayRoot;
         Transform nfsTurntable, nfsShowcaseCar;

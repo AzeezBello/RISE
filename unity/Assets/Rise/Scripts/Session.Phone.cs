@@ -280,7 +280,7 @@ namespace Rise
                           $"Reputation  public {st.rep.publicRep}  business {st.rep.business}  street {st.rep.street}  social {st.rep.social}\n" +
                           $"Certificates  {(st.courses.Count > 0 ? string.Join(", ", st.courses) : "none")}{(st.collegeGraduated ? ", Yaba Tech diploma" : st.collegeSemester >= 0 ? $", Yaba Tech semester {st.collegeSemester}/{Data.school.semesters}" : "")}\n" +
                           $"Look  {Pick(Data.outfits, st.lookOutfit, "Ankara shirt")} in {FabricName()} · {Pick(Data.bodyTypes, st.lookBody, "Average")} · hair {Pick(Data.hairStyles, st.lookHairStyle, "Short")} · {Pick(Data.facialHair, st.lookFacialHair, "None")} · {Pick(Data.accessories, st.lookAccessory, "None")}\n" +
-                          $"Skin {st.lookSkin + 1}/{Mathf.Max(1, Data.skins.Length)} · trousers {st.lookPants + 1}/{Mathf.Max(1, Data.pants.Length)} · hair colour {Pick(Data.hairColors, st.lookHair, "")} · face {Pick(Data.faces, st.lookFace, "Oval")} (face shape is stored; the rig has one face)";
+                          $"Skin {st.lookSkin + 1}/{Mathf.Max(1, Data.skins.Length)} · trousers {st.lookPants + 1}/{Mathf.Max(1, Data.pants.Length)} · hair {Pick(Data.hairColors, st.lookHair, "")} · face {Pick(Data.faces, st.lookFace, "Oval")}";
             void Apply() { Player.ApplyLook(State.Look); AppCharacter(); }
             Page("Character", $"Level {st.level} {State.Title} · {st.xp}/100 XP", body,
                 new MenuOption { Label = "Next outfit", Action = () => { st.lookOutfit = (st.lookOutfit + 1) % Mathf.Max(1, Data.outfits.Length); Apply(); } },
@@ -317,6 +317,8 @@ namespace Rise
                 opts.Add(new MenuOption { Label = "Holster weapon (hide from hand)", Action = () => { EquipWeapon(""); AppInventory(); } });
             if (st.fuel < 99f)
                 opts.Add(new MenuOption { Label = $"⛽ Emergency Roadside Jerrycan Refuel (100% Fuel) · ₦4,000 (now {st.fuel:0}%)", Action = () => { EmergencyRefuel(4000); AppInventory(); } });
+            if (Vehicle != null && Vehicle.Condition < 99f)
+                opts.Add(new MenuOption { Label = $"🔧 Roadside Mechanic Repair (100% Condition) · ₦5,000 (now {Vehicle.Condition:0}%)", Action = () => { EmergencyRepair(Vehicle, 5000); AppInventory(); } });
             opts.Add(new MenuOption { Label = "🏎️ NFS Underground Tuning & Mod Garage (Performance · NOS · Aero · Paint)", Action = () => { PhoneOpen = false; OpenNfsGarageMenu(Vehicle); } });
             opts.Add(new MenuOption { Label = $"Tactical Action Ops & Armory ({st.ammo} ammo)", Action = AppActionOps });
             Page("Inventory", "What you carry and own", sb.ToString(), opts.ToArray());

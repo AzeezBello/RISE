@@ -93,7 +93,19 @@ namespace Rise.World
             if (Raining)
             {
                 rainLeft -= dt; if (rainLeft <= 0f) { StopRain(); return; }
-                if (follow != null) rain.transform.position = new Vector3(follow.position.x, follow.position.y, follow.position.z);
+                if (follow != null)
+                {
+                    bool indoors = follow.position.y > 100f;
+                    if (indoors)
+                    {
+                        if (rain.isPlaying) rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                    }
+                    else
+                    {
+                        if (!rain.isPlaying) rain.Play();
+                        rain.transform.position = follow.position;
+                    }
+                }
             }
             else
             {

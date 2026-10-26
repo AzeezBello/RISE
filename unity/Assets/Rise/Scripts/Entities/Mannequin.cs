@@ -234,6 +234,7 @@ namespace Rise.Entities
         public bool BoardSign;
         public Vector3 BasePos;
         public float OffsetZ = 0.18f;
+        public float BoardYaw = 0f;
 
         void LateUpdate()
         {
@@ -241,9 +242,11 @@ namespace Rise.Entities
             if (cam == null) return;
             if (BoardSign)
             {
-                bool north = cam.transform.position.z >= BasePos.z;
-                transform.position = new Vector3(BasePos.x, BasePos.y, BasePos.z + (north ? OffsetZ : -OffsetZ));
-                transform.rotation = north ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
+                Quaternion rot = Quaternion.Euler(0f, BoardYaw, 0f);
+                Vector3 normal = rot * Vector3.forward;
+                bool front = Vector3.Dot(cam.transform.position - BasePos, normal) >= 0f;
+                transform.position = BasePos + normal * (front ? OffsetZ : -OffsetZ);
+                transform.rotation = front ? Quaternion.Euler(0f, BoardYaw + 180f, 0f) : rot;
                 return;
             }
             var d = transform.position - cam.transform.position;

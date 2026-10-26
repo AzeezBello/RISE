@@ -283,12 +283,13 @@ namespace Rise.World
             desk.GetComponent<MeshRenderer>().sharedMaterial = Mat("#f2efe9");
             encounterProps.Add(desk);
 
-            var beacon = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            var beacon = GameObject.CreatePrimitive(PrimitiveType.Cube);
             beacon.name = "Historic Encounter Beacon";
             Destroy(beacon.GetComponent<Collider>());
             beacon.transform.SetParent(transform, false);
-            beacon.transform.position = pos + Vector3.up * 3.3f;
-            beacon.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            beacon.transform.position = pos + Vector3.up * 2.95f;
+            beacon.transform.localRotation = Quaternion.Euler(45f, 45f, 45f);
+            beacon.transform.localScale = new Vector3(0.26f, 0.26f, 0.26f);
             beacon.GetComponent<MeshRenderer>().sharedMaterial = Mat(canopyHex);
             Label(beacon.transform, $"[{ev.Category.ToUpperInvariant()}] {ev.Title.ToUpperInvariant()}");
             encounterProps.Add(beacon);
@@ -440,12 +441,13 @@ namespace Rise.World
                 }
             }
 
-            var beacon = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            var beacon = GameObject.CreatePrimitive(PrimitiveType.Cube);
             beacon.name = "Encounter beacon";
             Destroy(beacon.GetComponent<Collider>());
             beacon.transform.SetParent(transform, false);
-            beacon.transform.position = pos + Vector3.up * 2.8f;
-            beacon.transform.localScale = new Vector3(0.45f, 0.45f, 0.45f);
+            beacon.transform.position = pos + Vector3.up * 2.35f;
+            beacon.transform.localRotation = Quaternion.Euler(45f, 45f, 45f);
+            beacon.transform.localScale = new Vector3(0.24f, 0.24f, 0.24f);
             beacon.GetComponent<MeshRenderer>().sharedMaterial = Mat("#ffc52f");
             Label(beacon.transform, ActiveEncounter.title.ToUpper());
             encounterProps.Add(beacon);
@@ -514,10 +516,10 @@ namespace Rise.World
         static void Label(Transform parent, string text)
         {
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            var go = new GameObject("Label"); go.transform.SetParent(parent, false); go.transform.localPosition = new Vector3(0, 0, -0.6f);
-            go.transform.localScale = new Vector3(1f / Mathf.Max(0.01f, parent.localScale.x), 1f / Mathf.Max(0.01f, parent.localScale.y), 1f);
-            var tm = go.AddComponent<TextMesh>(); tm.text = text; tm.font = font; tm.fontSize = 48; tm.characterSize = 0.06f; tm.fontStyle = FontStyle.Bold;
-            tm.anchor = TextAnchor.MiddleCenter; tm.alignment = TextAlignment.Center; tm.color = new Color(0.03f, 0.06f, 0.05f);
+            var go = new GameObject("Label"); go.transform.SetParent(parent, false); go.transform.localPosition = new Vector3(0f, 1.35f, 0f);
+            go.transform.localScale = new Vector3(1f / Mathf.Max(0.01f, parent.localScale.x), 1f / Mathf.Max(0.01f, parent.localScale.y), 1f / Mathf.Max(0.01f, parent.localScale.z));
+            var tm = go.AddComponent<TextMesh>(); tm.text = text; tm.font = font; tm.fontSize = 36; tm.characterSize = 0.028f; tm.fontStyle = FontStyle.Bold;
+            tm.anchor = TextAnchor.MiddleCenter; tm.alignment = TextAlignment.Center; tm.color = new Color(1.0f, 0.88f, 0.28f);
             go.GetComponent<MeshRenderer>().sharedMaterial = font.material;
             go.AddComponent<Entities.FacingLabel>();
         }

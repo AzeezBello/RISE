@@ -285,18 +285,26 @@ namespace Rise
             lastShorePos = pos;
             target = Target.None; Prompt = null;
 
-            targetVehicle = null; float best = 3.6f;
-            foreach (var v in Parked) { float d = Vector3.Distance(v.transform.position, pos) - v.Class.len * 0.5f; if (d < best) { best = d; targetVehicle = v; } }
-            targetTraffic = Traffic.Nearest(pos, 4.2f);
+            targetVehicle = null; float best = 2.8f;
+            foreach (var v in Parked)
+            {
+                if (v == null) continue;
+                Vector3 local = v.transform.InverseTransformPoint(pos);
+                float dx = Mathf.Max(0f, Mathf.Abs(local.x) - v.Class.wid * 0.5f);
+                float dz = Mathf.Max(0f, Mathf.Abs(local.z) - v.Class.len * 0.5f);
+                float d = Mathf.Sqrt(dx * dx + dz * dz);
+                if (d < best) { best = d; targetVehicle = v; }
+            }
+            targetTraffic = Traffic.Nearest(pos, 3.6f);
             targetContact = Contacts.Nearest(pos, 3.4f);
 
             targetProperty = NearGate(pos); targetBusiness = NearBusiness(pos); targetStop = NearBusStop(pos);
             targetItem = Street != null ? Street.NearestGroundItem(pos, 2.6f) : null;
 
             if (TaskDeliverable()) { target = Target.Deliver; Prompt = DeliverLabel(); }
+            else if (targetContact != null) { target = Target.Contact; Prompt = $"TALK TO {targetContact.data.name.ToUpper()}"; }
             else if (targetItem != null) { target = Target.GroundItem; Prompt = $"PICK UP {targetItem.label.ToUpper()} (E / G)"; }
             else if (targetVehicle != null) { target = Target.Vehicle; Prompt = $"ENTER {targetVehicle.Class.name.ToUpper()}"; }
-            else if (targetContact != null) { target = Target.Contact; Prompt = $"TALK TO {targetContact.data.name.ToUpper()}"; }
             else if (targetProperty != null && IsHome(targetProperty)) { target = Target.Home; Prompt = "ENTER HOME"; }
             else if (targetProperty != null) { target = Target.Gate; Prompt = $"SEE AGENT KUNLE · {targetProperty.type.ToUpper()}"; }
             else if (targetBusiness != null) { target = Target.Business; Prompt = (State.Biz(targetBusiness.id) != null ? "MANAGE " : "BUY ") + targetBusiness.name.ToUpper(); }
@@ -544,6 +552,7 @@ namespace Rise
             if (slow && TaskDeliverable()) { Prompt = DeliverLabel(); if (Interact()) { FinishTask(true); return; } }
             else if (slow && NearFuel(Vehicle.transform.position) && State.S.fuel < 99f) { Prompt = $"REFUEL · ₦{Data.meta.refuel:N0}"; if (Interact()) { Refuel(); return; } }
             else if (slow && State.S.fuel <= 0.05f) { Prompt = "OUT OF FUEL · EXIT VEHICLE (OR OPEN PHONE [P] TO REFUEL)"; if (Interact()) Exit(); }
+            else if (slow && Vehicle.Condition <= 0.5f) { Prompt = "VEHICLE WRECKED · EXIT OR OPEN PHONE [P] TO REPAIR"; if (Interact()) Exit(); }
             else if (slow) { Prompt = "EXIT VEHICLE"; if (Interact()) Exit(); }
         }
 
